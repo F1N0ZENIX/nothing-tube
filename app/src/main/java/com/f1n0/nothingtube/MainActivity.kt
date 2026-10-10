@@ -1,6 +1,8 @@
 package com.f1n0.nothingtube
 
 import android.app.Activity
+import android.app.PictureInPictureParams
+import android.content.res.Configuration
 import android.content.Intent
 import android.graphics.BitmapFactory
 import android.graphics.Color
@@ -10,6 +12,7 @@ import android.net.Uri
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
+import android.util.Rational
 import android.view.Gravity
 import android.view.View
 import android.view.inputmethod.EditorInfo
@@ -41,6 +44,10 @@ import org.json.JSONObject
 import java.net.HttpURLConnection
 import java.net.URL
 import java.net.URLEncoder
+import java.io.OutputStreamWriter
+import com.google.android.gms.auth.api.identity.AuthorizationRequest
+import com.google.android.gms.auth.api.identity.Identity
+import com.google.android.gms.common.api.Scope
 import java.util.concurrent.Executors
 
 class MainActivity : Activity() {
@@ -51,6 +58,18 @@ class MainActivity : Activity() {
     private var nativePlayerView: PlayerView? = null
     private var playerVisible = false
     private var fullscreenActive = false
+    private var pipActive = false
+    private var currentPlayerToolbar: View? = null
+    private var currentPlayerToolbarDivider: View? = null
+    private var currentPlayerDetails: View? = null
+    private var currentPlayerFrame: View? = null
+    private var currentCommentInput: EditText? = null
+    private var currentCommentsContainer: LinearLayout? = null
+    private var currentDescriptionText: TextView? = null
+    private var currentVideoId: String? = null
+    private var youtubeAccessToken: String? = null
+    private var authPendingVideoId: String? = null
+    private val youtubeAuthRequestCode = 7421
     private var exitFullscreenAction: (() -> Unit)? = null
     private var homeVisible = true
     private var activeSearch = ""
@@ -633,6 +652,8 @@ class MainActivity : Activity() {
         releaseNativePlayer()
         homeVisible = false
         playerVisible = true
+        currentVideoId = video.id
+        pipActive = false
 
         val root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
@@ -724,11 +745,13 @@ class MainActivity : Activity() {
         toolbar.addView(fullscreenButton)
         toolbar.addView(optionsButton)
         root.addView(toolbar)
+        currentPlayerToolbar = toolbar
         val toolbarDivider = View(this).apply {
             setBackgroundColor(Color.rgb(42, 42, 42))
             layoutParams = LinearLayout.LayoutParams(-1, dp(1))
         }
         root.addView(toolbarDivider)
+        currentPlayerToolbarDivider = toolbarDivider
 
         val player = PlayerView(this).apply {
             setBackgroundColor(Color.BLACK)
@@ -758,6 +781,7 @@ class MainActivity : Activity() {
         }
         playerFrame.addView(fullscreenOverlayButton)
         root.addView(playerFrame)
+        currentPlayerFrame = playerFrame
 
         val detailsScroll = ScrollView(this).apply {
             isFillViewport = false
@@ -770,6 +794,7 @@ class MainActivity : Activity() {
         }
         detailsScroll.addView(details)
         root.addView(detailsScroll)
+        currentPlayerDetails = detailsScroll
 
         val title = TextView(this).apply {
             text = video.title
@@ -835,6 +860,7 @@ class MainActivity : Activity() {
             setPadding(dp(18), 0, dp(18), dp(18))
         }
         details.addView(descriptionText)
+        currentDescriptionText = descriptionText
 
         val commentsDivider = View(this).apply {
             setBackgroundColor(Color.rgb(42, 42, 42))
@@ -857,6 +883,59 @@ class MainActivity : Activity() {
             setPadding(dp(18), 0, dp(18), dp(18))
         }
         details.addView(commentsContainer)
+        currentCommentsContainer = commentsContainer
+
+        val authButton = Button(this).apply {
+            text = if (youtubeAccessToken == null) "ENTRAR COM GOOGLE PARA COMENTAR" else "CONECTADO AO YOUTUBE"
+            isAllCaps = false
+            textSize = 12f
+            setTextColor(Color.WHITE)
+            backgroundTintList = android.content.res.ColorStateList.valueOf(Color.rgb(44, 44, 44))
+            layoutParams = LinearLayout.LayoutParams(-1, dp(46)).apply { setMargins(dp(18), 0, dp(18), dp(8)) }
+            setOnClickListener { authorizeYouTubeComments(video.id) }
+        }
+        details.addView(authButton)
+        val commentInput = EditText(this).apply {
+            hint = "Escreva um comentário…"
+            setTextColor(textColor)
+            setHintTextColor(mutedColor)
+            textSize = 14f
+            minLines = 2
+            maxLines = 4
+            gravity = Gravity.TOP or Gravity.START
+            background = roundedBackground(surfaceColor, 12)
+            setPadding(dp(12), dp(10), dp(12), dp(10))
+            layoutParams = LinearLayout.LayoutParams(-1, LinearLayout.LayoutParams.WRAP_CONTENT).apply { setMargins(dp(18), dp(4), dp(18), dp(8)) }
+        }
+        details.addView(commentInput)
+        currentCommentInput = commentInput
+        val sendCommentButton = Button(this).apply {
+            text = "PUBLICAR COMENTÁRIO"
+            isAllCaps = false
+            setTextColor(Color.WHITE)
+            backgroundTintList = android.content.res.ColorStateList.valueOf(accentColor)
+            layoutParams = LinearLayout.LayoutParams(-1, dp(46)).apply { setMargins(dp(18), 0, dp(18), dp(18)) }
+            setOnClickListener {
+                val typedComment = commentInput.text.toString().trim()
+                if (youtubeAccessToken.isNullOrBlank()) {
+                    Toast.makeText(this@MainActivity, "Entre com Google primeiro.", Toast.LENGTH_SHORT).show()
+                    authorizeYouTubeComments(video.id)
+                } else if (typedComment.isBlank()) {
+                    commentInput.error = "Digite um comentário"
+                } else {
+                    isEnabled = false
+                    postYouTubeComment(video.id, typedComment) { success, message ->
+                        isEnabled = true
+                        Toast.makeText(this@MainActivity, message, Toast.LENGTH_LONG).show()
+                        if (success) {
+                            commentInput.text.clear()
+                            loadYouTubeComments(video.id, commentsContainer)
+                        }
+                    }
+                }
+            }
+        }
+        details.addView(sendCommentButton)
 
         var fullscreen = false
         fun toggleFullscreen() {
@@ -882,57 +961,14 @@ class MainActivity : Activity() {
         setContentView(root)
 
         networkExecutor.execute {
-            val description = fetchVideoDescription(video.id)
+            val description = fetchVideoDescription(video.id, youtubeAccessToken)
             mainHandler.post {
                 if (!isFinishing && !isDestroyed && playerVisible && nativePlayerView === player) {
-                    descriptionText.text = description.ifBlank { "Descrição indisponível. Tente novamente mais tarde." }
+                    descriptionText.text = description.ifBlank { "A descrição não veio do YouTube. Verifique a conexão e tente novamente." }
                 }
             }
         }
-        networkExecutor.execute {
-            val comments = fetchVideoComments(video.id)
-            mainHandler.post {
-                if (isFinishing || isDestroyed || !playerVisible || nativePlayerView !== player) return@post
-                commentsContainer.removeAllViews()
-                if (comments.isEmpty()) {
-                    commentsContainer.addView(TextView(this).apply {
-                        text = "Não foi possível carregar os comentários. Eles podem estar desativados ou o YouTube pode ter limitado o acesso."
-                        textSize = 13f
-                        setTextColor(mutedColor)
-                        setPadding(0, 0, 0, dp(12))
-                    })
-                } else {
-                    comments.take(30).forEach { comment ->
-                        val item = LinearLayout(this).apply {
-                            orientation = LinearLayout.VERTICAL
-                            setPadding(0, dp(10), 0, dp(12))
-                        }
-                        item.addView(TextView(this).apply {
-                            text = comment.author + if (comment.published.isNotBlank()) "  ·  " + comment.published else ""
-                            textSize = 12f
-                            setTypeface(null, Typeface.BOLD)
-                            setTextColor(Color.rgb(220, 220, 220))
-                        })
-                        item.addView(TextView(this).apply {
-                            text = comment.text
-                            textSize = 13f
-                            setTextColor(Color.rgb(205, 205, 205))
-                            setPadding(0, dp(5), 0, dp(4))
-                        })
-                        if (comment.likes.isNotBlank()) item.addView(TextView(this).apply {
-                            text = "♡  " + comment.likes
-                            textSize = 11f
-                            setTextColor(mutedColor)
-                        })
-                        commentsContainer.addView(item)
-                        commentsContainer.addView(View(this).apply {
-                            setBackgroundColor(Color.rgb(42, 42, 42))
-                            layoutParams = LinearLayout.LayoutParams(-1, dp(1))
-                        })
-                    }
-                }
-            }
-        }
+        loadYouTubeComments(video.id, commentsContainer)
 
         // Keep playback fully native. If extraction is slow, expose retry instead of opening a WebView.
         mainHandler.postDelayed({
