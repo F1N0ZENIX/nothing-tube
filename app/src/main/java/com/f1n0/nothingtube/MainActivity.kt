@@ -1252,6 +1252,12 @@ class MainActivity : Activity() {
             val playerResponse = extractJsonObjectAfter(html, "ytInitialPlayerResponse") ?: extractJsonObjectAfter(html, "playerResponse")
             val description = playerResponse?.optJSONObject("videoDetails")?.optString("shortDescription").orEmpty()
             if (description.isNotBlank() && description != "null") return description
+            val metaDescription = Regex("""<meta[^>]+(?:name|property)=["'](?:description|og:description)["'][^>]+content=["'](.*?)["'][^>]*>""", RegexOption.IGNORE_CASE)
+                .find(html)?.groupValues?.getOrNull(1).orEmpty()
+            if (metaDescription.isNotBlank()) {
+                val decoded = android.text.Html.fromHtml(metaDescription, android.text.Html.FROM_HTML_MODE_LEGACY).toString().trim()
+                if (decoded.isNotBlank()) return decoded
+            }
         } catch (_: Exception) { }
         for (instance in listOf("https://inv.nadeko.net", "https://invidious.nerdvpn.de", "https://iv.datura.network")) {
             var connection: HttpURLConnection? = null
