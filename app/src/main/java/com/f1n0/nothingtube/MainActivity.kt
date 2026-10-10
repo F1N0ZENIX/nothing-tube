@@ -739,6 +739,7 @@ class MainActivity : Activity() {
                     return@post
                 }
                 status.visibility = View.GONE
+                retryButton.visibility = View.GONE
                 try {
                     val httpFactory = DefaultHttpDataSource.Factory()
                         .setUserAgent("Mozilla/5.0 (Linux; Android 15) AppleWebKit/537.36 Chrome/131.0.0.0 Mobile Safari/537.36")
