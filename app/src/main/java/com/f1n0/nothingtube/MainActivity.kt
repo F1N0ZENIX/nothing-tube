@@ -219,8 +219,8 @@ class MainActivity : Activity() {
                 collectVideoRenderers(initialData, videos)
                 val unique = videos.distinctBy { it.id }
                 val nextToken = findNextContinuationToken(initialData)
-                val apiKey = Regex("\\\"INNERTUBE_API_KEY\\\":\\\"([^\\\"]+)\\\"").find(html)?.groupValues?.getOrNull(1)
-                val context = extractJsonObjectAfter(html, "\\\"INNERTUBE_CONTEXT\\\"")
+                val apiKey = Regex("\\"INNERTUBE_API_KEY\\":\\"([^\\"]+)\\"").find(html)?.groupValues?.getOrNull(1)
+                val context = extractJsonObjectAfter(html, "\\"INNERTUBE_CONTEXT\\"")
                 mainHandler.post {
                     if (activeSearch != query || isFinishing || isDestroyed) return@post
                     searchProgress?.visibility = View.GONE
@@ -665,7 +665,7 @@ class MainActivity : Activity() {
             settings.loadsImagesAutomatically = true
             settings.javaScriptCanOpenWindowsAutomatically = false
             settings.setSupportMultipleWindows(false)
-            settings.mediaPlaybackRequiresUserGesture = true
+            settings.mediaPlaybackRequiresUserGesture = !url.contains("/embed/")
             webViewClient = object : WebViewClient() {
                 override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean {
                     val scheme = request.url.scheme?.lowercase()
