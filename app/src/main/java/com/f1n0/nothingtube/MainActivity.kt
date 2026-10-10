@@ -695,14 +695,28 @@ class MainActivity : Activity() {
         root.addView(channel)
 
         val status = TextView(this).apply {
-            text = "PREPARANDO PLAYER NATIVO…"
-            textSize = 11f
-            letterSpacing = 0.06f
+            text = "CONECTANDO AO STREAM…"
+            textSize = 12f
+            letterSpacing = 0.04f
             setTextColor(mutedColor)
             gravity = Gravity.CENTER
-            setPadding(dp(20), dp(24), dp(20), dp(24))
+            setPadding(dp(22), dp(24), dp(22), dp(24))
         }
         root.addView(status)
+
+        val retryButton = Button(this).apply {
+            text = "TENTAR NOVAMENTE"
+            isAllCaps = false
+            textSize = 13f
+            setTextColor(Color.WHITE)
+            backgroundTintList = android.content.res.ColorStateList.valueOf(Color.rgb(44, 44, 44))
+            visibility = View.GONE
+            layoutParams = LinearLayout.LayoutParams(-1, dp(48)).apply {
+                setMargins(dp(18), dp(4), dp(18), dp(18))
+            }
+            setOnClickListener { playVideo(video) }
+        }
+        root.addView(retryButton)
         setContentView(root)
 
         networkExecutor.execute {
@@ -710,7 +724,8 @@ class MainActivity : Activity() {
             mainHandler.post {
                 if (isFinishing || isDestroyed || !playerVisible || nativePlayerView !== player) return@post
                 if (resolved == null) {
-                    status.text = "Não foi possível obter o fluxo deste vídeo. Tente outro vídeo ou novamente mais tarde."
+                    status.text = "NÃO FOI POSSÍVEL CONECTAR AO STREAM"
+                    retryButton.visibility = View.VISIBLE
                     return@post
                 }
                 status.visibility = View.GONE
@@ -739,57 +754,113 @@ class MainActivity : Activity() {
                         override fun onPlayerError(error: PlaybackException) {
                             if (!isFinishing && !isDestroyed) {
                                 status.visibility = View.VISIBLE
-                                status.text = "Falha na reprodução. O fluxo pode ter expirado; volte e tente novamente."
+                                status.text = "O STREAM FALHOU OU EXPIROU"
+                                retryButton.visibility = View.VISIBLE
                             }
                         }
                     })
                 } catch (_: Exception) {
                     status.visibility = View.VISIBLE
-                    status.text = "Não foi possível iniciar o player nativo."
+                    status.text = "NÃO FOI POSSÍVEL INICIAR O PLAYER"
+                    retryButton.visibility = View.VISIBLE
                 }
             }
         }
     }
 
     private fun resolvePlayableStream(videoId: String): String? {
-        val instances = listOf(
+        // Piped exposes muxed MP4 streams that ExoPlayer can play without combining DASH tracks.
+        // Public instances are best-effort and can go offline or be rate-limited.
+        val pipedInstances = listOf(
+            "https://pipedapi.kavin.rocks",
+            "https://pipedapi.tokhmi.xyz",
+            "https://pipedapi.moomoo.me",
+            "https://pipedapi.syncpundit.io",
+            "https://api-piped.mha.fi",
+            "https://piped-api.garudalinux.org",
+            "https://pipedapi.rivo.lol",
+            "https://pipedapi.leptons.xyz",
+            "https://pipedapi.colinslegacy.com",
+            "https://pipedapi.adminforge.de"
+        )
+        for (instance in pipedInstances) {
+            var connection: HttpURLConnection? = null
+            try {
+                connection = (URL("$instance/streams/$videoId").openConnection() as HttpURLConnection).apply {
+                    requestMethod = "GET"
+                    connectTimeout = 5000
+                    readTimeout = 7000
+                    setRequestProperty("User-Agent", "Mozilla/5.0 (Linux; Android 15) AppleWebKit/537.36 Chrome/131.0.0.0 Mobile Safari/537.36")
+                    setRequestProperty("Accept", "application/json")
+                }
+                if (connection.responseCode !in 200..299) continue
+                val json = connection.inputStream.bufferedReader(Charsets.UTF_8).use { JSONObject(it.readText()) }
+                val streams = json.optJSONArray("videoStreams")
+                if (streams != null) {
+                    val candidates = (0 until streams.length()).mapNotNull { index ->
+                        val item = streams.optJSONObject(index) ?: return@mapNotNull null
+                        val url = item.optString("url").takeIf { it.startsWith("https://") } ?: return@mapNotNull null
+                        val mime = item.optString("mimeType")
+                        val format = item.optString("format")
+                        if (item.optBoolean("videoOnly", false)) return@mapNotNull null
+                        if (!(mime.contains("video/mp4", true) || format.equals("MPEG_4", true))) return@mapNotNull null
+                        Triple(url, item.optInt("height", 0), item.optLong("bitrate", 0L))
+                    }
+                    val chosen = candidates.filter { it.second in 1..720 }
+                        .maxWithOrNull(compareBy<Triple<String, Int, Long>> { it.second }.thenBy { it.third })
+                        ?: candidates.maxWithOrNull(compareBy<Triple<String, Int, Long>> { it.second }.thenBy { it.third })
+                    if (chosen != null) return chosen.first
+                }
+                val hls = json.optString("hls", json.optString("hlsUrl"))
+                    .takeIf { it.startsWith("https://") && it != "null" && it.isNotBlank() }
+                if (hls != null) return hls
+            } catch (_: Exception) {
+                // Continue to another instance.
+            } finally {
+                connection?.disconnect()
+            }
+        }
+
+        // Invidious fallback. Some instances return direct MP4 URLs, others only metadata.
+        val invidiousInstances = listOf(
             "https://inv.nadeko.net",
             "https://invidious.nerdvpn.de",
-            "https://invidious.privacyredirect.com"
+            "https://invidious.privacyredirect.com",
+            "https://invidious.privacydev.net",
+            "https://iv.datura.network"
         )
-        for (instance in instances) {
+        for (instance in invidiousInstances) {
             var connection: HttpURLConnection? = null
             try {
                 connection = (URL("$instance/api/v1/videos/$videoId").openConnection() as HttpURLConnection).apply {
                     requestMethod = "GET"
-                    connectTimeout = 10000
-                    readTimeout = 15000
+                    connectTimeout = 5000
+                    readTimeout = 7000
                     setRequestProperty("User-Agent", "Mozilla/5.0 (Linux; Android 15) AppleWebKit/537.36 Chrome/131.0.0.0 Mobile Safari/537.36")
                     setRequestProperty("Accept", "application/json")
                 }
                 if (connection.responseCode !in 200..299) continue
                 val json = connection.inputStream.bufferedReader(Charsets.UTF_8).use { JSONObject(it.readText()) }
                 val formats = json.optJSONArray("formatStreams")
-                if (formats != null && formats.length() > 0) {
+                if (formats != null) {
                     val candidates = (0 until formats.length()).mapNotNull { index ->
                         val item = formats.optJSONObject(index) ?: return@mapNotNull null
                         val url = item.optString("url").takeIf { it.startsWith("https://") } ?: return@mapNotNull null
-                        val type = item.optString("type")
-                        if (!type.contains("video/mp4", ignoreCase = true)) return@mapNotNull null
-                        val resolution = item.optString("resolution")
-                        val height = resolution.substringAfter("x", "").toIntOrNull()
+                        if (!item.optString("type").contains("video/mp4", true)) return@mapNotNull null
+                        val height = item.optString("resolution").substringAfter("x", "").toIntOrNull()
                             ?: Regex("(\\d+)p").find(item.optString("qualityLabel"))?.groupValues?.getOrNull(1)?.toIntOrNull()
                             ?: 0
                         Triple(url, height, item.optLong("bitrate", 0L))
                     }
-                    val chosen = candidates.filter { it.second <= 720 }.maxWithOrNull(compareBy<Triple<String, Int, Long>> { it.second }.thenBy { it.third })
+                    val chosen = candidates.filter { it.second in 1..720 }
+                        .maxWithOrNull(compareBy<Triple<String, Int, Long>> { it.second }.thenBy { it.third })
                         ?: candidates.maxWithOrNull(compareBy<Triple<String, Int, Long>> { it.second }.thenBy { it.third })
                     if (chosen != null) return chosen.first
                 }
                 val hls = json.optString("hlsUrl").takeIf { it.startsWith("https://") && it != "null" }
                 if (hls != null) return hls
             } catch (_: Exception) {
-                // Try the next public instance.
+                // Continue to another instance.
             } finally {
                 connection?.disconnect()
             }
