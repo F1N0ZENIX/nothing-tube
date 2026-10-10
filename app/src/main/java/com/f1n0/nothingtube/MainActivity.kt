@@ -66,6 +66,7 @@ class MainActivity : Activity() {
     private var innertubeApiKey: String? = null
     private var innertubeContext: JSONObject? = null
     private var isLoadingMore = false
+    private var newPipeInitialized = false
     private val displayedVideoIds = mutableSetOf<String>()
 
     private data class VideoResult(
@@ -719,17 +720,14 @@ class MainActivity : Activity() {
         root.addView(retryButton)
         setContentView(root)
 
-        // Do not leave users stuck on "connecting" when public stream resolvers hang.
-        // After 12 seconds, offer YouTube's own watch page as a compatibility fallback.
+        // Keep playback fully native. If extraction is slow, expose retry instead of opening a WebView.
         mainHandler.postDelayed({
             if (!isFinishing && !isDestroyed && playerVisible && nativePlayerView === player &&
                 status.visibility == View.VISIBLE && status.text.toString().contains("CONECTANDO")) {
-                status.text = "O STREAM ESTÁ DEMORANDO. ABRINDO MODO COMPATÍVEL…"
-                releaseNativePlayer()
-                playerVisible = false
-                showInternalPage("https://m.youtube.com/watch?v=${video.id}", "REPRODUÇÃO COMPATÍVEL")
+                status.text = "A EXTRAÇÃO ESTÁ DEMORANDO. TENTE NOVAMENTE."
+                retryButton.visibility = View.VISIBLE
             }
-        }, 12_000L)
+        }, 25_000L)
 
         networkExecutor.execute {
             val resolved = resolvePlayableStream(video.id)
@@ -780,7 +778,67 @@ class MainActivity : Activity() {
         }
     }
 
+    @Synchronized
+    private fun resolveWithNewPipe(videoId: String): String? {
+        if (!newPipeInitialized) {
+            org.schabi.newpipe.extractor.NewPipe.init(object : org.schabi.newpipe.extractor.downloader.Downloader() {
+                override fun execute(request: org.schabi.newpipe.extractor.downloader.Request): org.schabi.newpipe.extractor.downloader.Response {
+                    val connection = (URL(request.url()).openConnection() as HttpURLConnection).apply {
+                        requestMethod = request.httpMethod()
+                        connectTimeout = 9000
+                        readTimeout = 12000
+                        instanceFollowRedirects = true
+                        setRequestProperty("User-Agent", "Mozilla/5.0 (X11; Linux x86_64; rv:128.0) Gecko/20100101 Firefox/128.0")
+                        request.headers()?.forEach { (key, values) ->
+                            values.forEach { value -> setRequestProperty(key, value) }
+                        }
+                        request.dataToSend()?.let { data ->
+                            doOutput = true
+                            outputStream.use { it.write(data) }
+                        }
+                    }
+                    try {
+                        val statusCode = connection.responseCode
+                        val body = (if (statusCode >= 400) connection.errorStream else connection.inputStream)
+                            ?.bufferedReader(Charsets.UTF_8)?.use { it.readText() }.orEmpty()
+                        val headers = connection.headerFields.filterKeys { it != null }
+                            .mapKeys { it.key!! }
+                            .mapValues { it.value ?: emptyList<String>() }
+                        return org.schabi.newpipe.extractor.downloader.Response(
+                            statusCode,
+                            connection.responseMessage.orEmpty(),
+                            headers,
+                            body,
+                            connection.url.toString()
+                        )
+                    } finally {
+                        connection.disconnect()
+                    }
+                }
+            })
+            newPipeInitialized = true
+        }
+
+        val info = org.schabi.newpipe.extractor.stream.StreamInfo.getInfo(
+            org.schabi.newpipe.extractor.services.youtube.YoutubeService(),
+            "https://www.youtube.com/watch?v=$videoId"
+        )
+        val streams = info.videoStreams ?: emptyList()
+        val usable = streams.filter { it.content.startsWith("https://") && !it.isVideoOnly }
+        return usable.maxByOrNull { stream ->
+            Regex("(\\d+)p").find(stream.resolution)?.groupValues?.getOrNull(1)?.toIntOrNull() ?: 0
+        }?.content
+    }
+
     private fun resolvePlayableStream(videoId: String): String? {
+        // First try an on-device extractor instead of relying on public Piped/Invidious instances.
+        try {
+            val extracted = resolveWithNewPipe(videoId)
+            if (!extracted.isNullOrBlank()) return extracted
+        } catch (_: Exception) {
+            // Continue to public API fallbacks below.
+        }
+
         // Piped exposes muxed MP4 streams that ExoPlayer can play without combining DASH tracks.
         // Public instances are best-effort and can go offline or be rate-limited.
         val pipedInstances = listOf(
