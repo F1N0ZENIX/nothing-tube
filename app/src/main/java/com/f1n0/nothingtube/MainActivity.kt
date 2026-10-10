@@ -843,23 +843,17 @@ class MainActivity : Activity() {
         // Public instances are best-effort and can go offline or be rate-limited.
         val pipedInstances = listOf(
             "https://pipedapi.kavin.rocks",
-            "https://pipedapi.tokhmi.xyz",
-            "https://pipedapi.moomoo.me",
-            "https://pipedapi.syncpundit.io",
-            "https://api-piped.mha.fi",
-            "https://piped-api.garudalinux.org",
+            "https://pipedapi.adminforge.de",
             "https://pipedapi.rivo.lol",
-            "https://pipedapi.leptons.xyz",
-            "https://pipedapi.colinslegacy.com",
-            "https://pipedapi.adminforge.de"
+            "https://pipedapi.leptons.xyz"
         )
         for (instance in pipedInstances) {
             var connection: HttpURLConnection? = null
             try {
                 connection = (URL("$instance/streams/$videoId").openConnection() as HttpURLConnection).apply {
                     requestMethod = "GET"
-                    connectTimeout = 5000
-                    readTimeout = 7000
+                    connectTimeout = 3500
+                    readTimeout = 4500
                     setRequestProperty("User-Agent", "Mozilla/5.0 (Linux; Android 15) AppleWebKit/537.36 Chrome/131.0.0.0 Mobile Safari/537.36")
                     setRequestProperty("Accept", "application/json")
                 }
@@ -895,8 +889,6 @@ class MainActivity : Activity() {
         val invidiousInstances = listOf(
             "https://inv.nadeko.net",
             "https://invidious.nerdvpn.de",
-            "https://invidious.privacyredirect.com",
-            "https://invidious.privacydev.net",
             "https://iv.datura.network"
         )
         for (instance in invidiousInstances) {
@@ -904,8 +896,8 @@ class MainActivity : Activity() {
             try {
                 connection = (URL("$instance/api/v1/videos/$videoId").openConnection() as HttpURLConnection).apply {
                     requestMethod = "GET"
-                    connectTimeout = 5000
-                    readTimeout = 7000
+                    connectTimeout = 3500
+                    readTimeout = 4500
                     setRequestProperty("User-Agent", "Mozilla/5.0 (Linux; Android 15) AppleWebKit/537.36 Chrome/131.0.0.0 Mobile Safari/537.36")
                     setRequestProperty("Accept", "application/json")
                 }
