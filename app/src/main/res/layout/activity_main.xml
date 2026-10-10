@@ -299,7 +299,7 @@
                 android:layout_height="wrap_content"
                 android:layout_weight="1"
                 android:letterSpacing="0.12"
-                android:text="NOTHING TUBE  /  BUILD 002"
+                android:text="NOTHING TUBE  /  VERSÃO 1.0"
                 android:textColor="#666666"
                 android:textSize="9sp" />
 
