@@ -2,6 +2,9 @@ package com.f1n0.nothingtube
 
 import android.app.Activity
 import android.app.PictureInPictureParams
+import android.app.PendingIntent
+import android.app.RemoteAction
+import android.graphics.drawable.Icon
 import android.content.res.Configuration
 import android.content.Intent
 import android.graphics.BitmapFactory
@@ -44,10 +47,6 @@ import org.json.JSONObject
 import java.net.HttpURLConnection
 import java.net.URL
 import java.net.URLEncoder
-import java.io.OutputStreamWriter
-import com.google.android.gms.auth.api.identity.AuthorizationRequest
-import com.google.android.gms.auth.api.identity.Identity
-import com.google.android.gms.common.api.Scope
 import java.util.concurrent.Executors
 
 class MainActivity : Activity() {
@@ -63,13 +62,11 @@ class MainActivity : Activity() {
     private var currentPlayerToolbarDivider: View? = null
     private var currentPlayerDetails: View? = null
     private var currentPlayerFrame: View? = null
-    private var currentCommentInput: EditText? = null
     private var currentCommentsContainer: LinearLayout? = null
     private var currentDescriptionText: TextView? = null
     private var currentVideoId: String? = null
-    private var youtubeAccessToken: String? = null
-    private var authPendingVideoId: String? = null
-    private val youtubeAuthRequestCode = 7421
+    private val videoQueue = mutableListOf<VideoResult>()
+    private var currentQueueIndex = -1
     private var exitFullscreenAction: (() -> Unit)? = null
     private var homeVisible = true
     private var activeSearch = ""
@@ -270,6 +267,8 @@ class MainActivity : Activity() {
                     searchProgress?.visibility = View.GONE
                     resultsContainer?.removeAllViews()
                     displayedVideoIds.clear()
+                    videoQueue.clear()
+                    videoQueue.addAll(unique)
                     continuationToken = nextToken
                     innertubeApiKey = apiKey
                     innertubeContext = context
@@ -386,6 +385,7 @@ class MainActivity : Activity() {
                     isLoadingMore = false
                     searchProgress?.visibility = View.GONE
                     videos.distinctBy { it.id }.filter { displayedVideoIds.add(it.id) }.forEach {
+                        videoQueue.add(it)
                         resultsContainer?.addView(createVideoCard(it))
                     }
                     continuationToken = nextToken
@@ -652,8 +652,10 @@ class MainActivity : Activity() {
         releaseNativePlayer()
         homeVisible = false
         playerVisible = true
+        val wasInPip = pipActive
         currentVideoId = video.id
-        pipActive = false
+        currentQueueIndex = videoQueue.indexOfFirst { it.id == video.id }
+        pipActive = wasInPip
 
         val root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
@@ -885,57 +887,14 @@ class MainActivity : Activity() {
         details.addView(commentsContainer)
         currentCommentsContainer = commentsContainer
 
-        val authButton = Button(this).apply {
-            text = if (youtubeAccessToken == null) "ENTRAR COM GOOGLE PARA COMENTAR" else "CONECTADO AO YOUTUBE"
-            isAllCaps = false
-            textSize = 12f
-            setTextColor(Color.WHITE)
-            backgroundTintList = android.content.res.ColorStateList.valueOf(Color.rgb(44, 44, 44))
-            layoutParams = LinearLayout.LayoutParams(-1, dp(46)).apply { setMargins(dp(18), 0, dp(18), dp(8)) }
-            setOnClickListener { authorizeYouTubeComments(video.id) }
+        val commentsNotice = TextView(this).apply {
+            text = "COMENTÁRIOS EM MODO DE LEITURA · PUBLICAÇÃO SERÁ ADICIONADA EM UMA VERSÃO FUTURA"
+            textSize = 10f
+            letterSpacing = 0.03f
+            setTextColor(mutedColor)
+            setPadding(dp(18), dp(4), dp(18), dp(18))
         }
-        details.addView(authButton)
-        val commentInput = EditText(this).apply {
-            hint = "Escreva um comentário…"
-            setTextColor(textColor)
-            setHintTextColor(mutedColor)
-            textSize = 14f
-            minLines = 2
-            maxLines = 4
-            gravity = Gravity.TOP or Gravity.START
-            background = roundedBackground(surfaceColor, 12)
-            setPadding(dp(12), dp(10), dp(12), dp(10))
-            layoutParams = LinearLayout.LayoutParams(-1, LinearLayout.LayoutParams.WRAP_CONTENT).apply { setMargins(dp(18), dp(4), dp(18), dp(8)) }
-        }
-        details.addView(commentInput)
-        currentCommentInput = commentInput
-        val sendCommentButton = Button(this).apply {
-            text = "PUBLICAR COMENTÁRIO"
-            isAllCaps = false
-            setTextColor(Color.WHITE)
-            backgroundTintList = android.content.res.ColorStateList.valueOf(accentColor)
-            layoutParams = LinearLayout.LayoutParams(-1, dp(46)).apply { setMargins(dp(18), 0, dp(18), dp(18)) }
-            setOnClickListener {
-                val typedComment = commentInput.text.toString().trim()
-                if (youtubeAccessToken.isNullOrBlank()) {
-                    Toast.makeText(this@MainActivity, "Entre com Google primeiro.", Toast.LENGTH_SHORT).show()
-                    authorizeYouTubeComments(video.id)
-                } else if (typedComment.isBlank()) {
-                    commentInput.error = "Digite um comentário"
-                } else {
-                    isEnabled = false
-                    postYouTubeComment(video.id, typedComment) { success, message ->
-                        isEnabled = true
-                        Toast.makeText(this@MainActivity, message, Toast.LENGTH_LONG).show()
-                        if (success) {
-                            commentInput.text.clear()
-                            loadYouTubeComments(video.id, commentsContainer)
-                        }
-                    }
-                }
-            }
-        }
-        details.addView(sendCommentButton)
+        details.addView(commentsNotice)
 
         var fullscreen = false
         fun toggleFullscreen() {
@@ -959,9 +918,15 @@ class MainActivity : Activity() {
         exitFullscreenAction = { if (fullscreen) toggleFullscreen() }
 
         setContentView(root)
+        if (pipActive) {
+            currentPlayerToolbar?.visibility = View.GONE
+            currentPlayerToolbarDivider?.visibility = View.GONE
+            currentPlayerDetails?.visibility = View.GONE
+            currentPlayerFrame?.layoutParams = LinearLayout.LayoutParams(-1, 0, 1f)
+        }
 
         networkExecutor.execute {
-            val description = fetchVideoDescription(video.id, youtubeAccessToken)
+            val description = fetchVideoDescription(video.id)
             mainHandler.post {
                 if (!isFinishing && !isDestroyed && playerVisible && nativePlayerView === player) {
                     descriptionText.text = description.ifBlank { "A descrição não veio do YouTube. Verifique a conexão e tente novamente." }
@@ -1081,164 +1046,7 @@ class MainActivity : Activity() {
         }?.content
     }
 
-    private fun authorizedYouTubeRequest(path: String, method: String, token: String, body: JSONObject? = null): JSONObject {
-        val connection = (URL("https://www.googleapis.com/youtube/v3$path").openConnection() as HttpURLConnection).apply {
-            requestMethod = method
-            connectTimeout = 12000
-            readTimeout = 15000
-            setRequestProperty("Authorization", "Bearer $token")
-            setRequestProperty("Accept", "application/json")
-            setRequestProperty("Content-Type", "application/json; charset=UTF-8")
-            if (body != null) doOutput = true
-        }
-        try {
-            if (body != null) OutputStreamWriter(connection.outputStream, Charsets.UTF_8).use { it.write(body.toString()) }
-            val status = connection.responseCode
-            val stream = if (status in 200..299) connection.inputStream else connection.errorStream
-            val response = stream?.bufferedReader(Charsets.UTF_8)?.use { it.readText() }.orEmpty()
-            if (status !in 200..299) {
-                val message = try { JSONObject(response).optJSONObject("error")?.optString("message") } catch (_: Exception) { null }
-                throw IllegalStateException(message ?: "YouTube API respondeu HTTP " + status)
-            }
-            return JSONObject(response)
-        } finally { connection.disconnect() }
-    }
-
-    private fun authorizeYouTubeComments(videoId: String) {
-        authPendingVideoId = videoId
-        val request = AuthorizationRequest.builder()
-            .setRequestedScopes(listOf(Scope("https://www.googleapis.com/auth/youtube.force-ssl")))
-            .build()
-        Identity.getAuthorizationClient(this).authorize(request)
-            .addOnSuccessListener { result ->
-                if (result.hasResolution()) {
-                    try { startIntentSenderForResult(result.pendingIntent!!.intentSender, youtubeAuthRequestCode, null, 0, 0, 0) }
-                    catch (_: Exception) { Toast.makeText(this, "Não foi possível abrir o login do Google.", Toast.LENGTH_LONG).show() }
-                } else {
-                    youtubeAccessToken = result.accessToken
-                    onYouTubeAuthorized()
-                }
-            }
-            .addOnFailureListener { error ->
-                Toast.makeText(this, "Login do YouTube falhou: " + (error.localizedMessage ?: "tente novamente"), Toast.LENGTH_LONG).show()
-            }
-    }
-
-    private fun onYouTubeAuthorized() {
-        val videoId = authPendingVideoId ?: currentVideoId
-        authPendingVideoId = null
-        Toast.makeText(this, "Conta Google conectada ao Nothing Tube.", Toast.LENGTH_SHORT).show()
-        currentCommentInput?.parent?.let { parent ->
-            if (parent is LinearLayout) for (i in 0 until parent.childCount) {
-                val child = parent.getChildAt(i)
-                if (child is Button && child.text.toString().contains("ENTRAR COM GOOGLE")) child.text = "CONECTADO AO YOUTUBE"
-            }
-        }
-        if (!videoId.isNullOrBlank()) {
-            currentDescriptionText?.text = "Atualizando descrição…"
-            networkExecutor.execute {
-                val description = fetchVideoDescription(videoId, youtubeAccessToken)
-                mainHandler.post {
-                    if (currentVideoId == videoId && playerVisible) currentDescriptionText?.text =
-                        description.ifBlank { "Descrição não disponível para este vídeo." }
-                }
-            }
-            currentCommentsContainer?.let { loadYouTubeComments(videoId, it) }
-        }
-    }
-
-    private fun loadYouTubeComments(videoId: String, container: LinearLayout) {
-        container.removeAllViews()
-        container.addView(TextView(this).apply {
-            text = "CARREGANDO COMENTÁRIOS…"
-            textSize = 12f
-            setTextColor(mutedColor)
-            setPadding(0, dp(8), 0, dp(12))
-        })
-        networkExecutor.execute {
-            val comments = fetchVideoComments(videoId, youtubeAccessToken)
-            mainHandler.post {
-                if (isFinishing || isDestroyed || !playerVisible || currentVideoId != videoId || currentCommentsContainer !== container) return@post
-                container.removeAllViews()
-                if (comments.isEmpty()) {
-                    container.addView(TextView(this).apply {
-                        text = if (youtubeAccessToken.isNullOrBlank()) "O YouTube não liberou os comentários nesta consulta. Entre com Google para tentar carregá-los pela API oficial."
-                        else "Nenhum comentário retornado. O vídeo pode estar com comentários desativados ou a API pode não ter acesso."
-                        textSize = 13f
-                        setTextColor(mutedColor)
-                        setPadding(0, 0, 0, dp(12))
-                    })
-                } else comments.take(30).forEach { comment ->
-                    val item = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(0, dp(10), 0, dp(12)) }
-                    item.addView(TextView(this).apply {
-                        text = comment.author + if (comment.published.isNotBlank()) "  ·  " + comment.published else ""
-                        textSize = 12f
-                        setTypeface(null, Typeface.BOLD)
-                        setTextColor(Color.rgb(220, 220, 220))
-                    })
-                    item.addView(TextView(this).apply {
-                        text = comment.text
-                        textSize = 13f
-                        setTextColor(Color.rgb(205, 205, 205))
-                        setPadding(0, dp(5), 0, dp(4))
-                    })
-                    if (comment.likes.isNotBlank() && comment.likes != "0") item.addView(TextView(this).apply {
-                        text = "♡  " + comment.likes
-                        textSize = 11f
-                        setTextColor(mutedColor)
-                    })
-                    container.addView(item)
-                    container.addView(View(this).apply {
-                        setBackgroundColor(Color.rgb(42, 42, 42))
-                        layoutParams = LinearLayout.LayoutParams(-1, dp(1))
-                    })
-                }
-            }
-        }
-    }
-
-    private fun postYouTubeComment(videoId: String, commentText: String, callback: (Boolean, String) -> Unit) {
-        val token = youtubeAccessToken
-        if (token.isNullOrBlank()) { callback(false, "Entre com Google antes de comentar."); return }
-        networkExecutor.execute {
-            var success = false
-            var message = "Não foi possível publicar o comentário."
-            try {
-                val body = JSONObject().put("snippet", JSONObject()
-                    .put("videoId", videoId)
-                    .put("topLevelComment", JSONObject().put("snippet", JSONObject().put("textOriginal", commentText))))
-                authorizedYouTubeRequest("/commentThreads?part=snippet", "POST", token, body)
-                success = true
-                message = "Comentário publicado!"
-            } catch (error: Exception) {
-                message = "Falha ao comentar: " + (error.localizedMessage ?: "verifique a conta e tente novamente")
-            }
-            mainHandler.post { if (!isFinishing && !isDestroyed) callback(success, message) }
-        }
-    }
-
-    @Suppress("DEPRECATION")
-    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
-        super.onActivityResult(requestCode, resultCode, data)
-        if (requestCode != youtubeAuthRequestCode || resultCode != RESULT_OK || data == null) return
-        try {
-            val result = Identity.getAuthorizationClient(this).getAuthorizationResultFromIntent(data)
-            youtubeAccessToken = result.accessToken
-            if (youtubeAccessToken.isNullOrBlank()) Toast.makeText(this, "O Google não retornou autorização para o YouTube.", Toast.LENGTH_LONG).show()
-            else onYouTubeAuthorized()
-        } catch (error: Exception) {
-            Toast.makeText(this, "Não foi possível concluir o login: " + (error.localizedMessage ?: "tente novamente"), Toast.LENGTH_LONG).show()
-        }
-    }
-
-    private fun fetchVideoDescription(videoId: String, token: String? = null): String {
-        if (!token.isNullOrBlank()) {
-            try {
-                val data = authorizedYouTubeRequest("/videos?part=snippet&id=$videoId", "GET", token)
-                val description = data.optJSONArray("items")?.optJSONObject(0)?.optJSONObject("snippet")?.optString("description").orEmpty()
-                if (description.isNotBlank() && description != "null") return description
-            } catch (_: Exception) { }
-        }
+    private fun fetchVideoDescription(videoId: String): String {
         try {
             val connection = (URL("https://www.youtube.com/watch?v=$videoId&hl=pt-BR").openConnection() as HttpURLConnection).apply {
                 connectTimeout = 12000
@@ -1278,23 +1086,7 @@ class MainActivity : Activity() {
         return ""
     }
 
-    private fun fetchVideoComments(videoId: String, token: String? = null): List<VideoComment> {
-        if (!token.isNullOrBlank()) {
-            try {
-                val data = authorizedYouTubeRequest("/commentThreads?part=snippet&videoId=$videoId&maxResults=30&textFormat=plainText", "GET", token)
-                val items = data.optJSONArray("items")
-                if (items != null) {
-                    val result = (0 until items.length()).mapNotNull { index ->
-                        val snippet = items.optJSONObject(index)?.optJSONObject("snippet")?.optJSONObject("topLevelComment")?.optJSONObject("snippet") ?: return@mapNotNull null
-                        val body = snippet.optString("textOriginal").ifBlank { snippet.optString("textDisplay") }
-                        if (body.isBlank()) return@mapNotNull null
-                        VideoComment(snippet.optString("authorDisplayName").ifBlank { "Usuário do YouTube" }, body,
-                            snippet.optInt("likeCount", 0).toString(), snippet.optString("publishedAt").take(10))
-                    }
-                    if (result.isNotEmpty()) return result
-                }
-            } catch (_: Exception) { }
-        }
+    private fun fetchVideoComments(videoId: String): List<VideoComment> {
         var pageConnection: HttpURLConnection? = null
         try {
             pageConnection = (URL("https://www.youtube.com/watch?v=$videoId&hl=pt-BR").openConnection() as HttpURLConnection).apply {
@@ -1654,10 +1446,42 @@ class MainActivity : Activity() {
             cornerRadius = dp(radiusDp).toFloat()
         }
 
+    private fun moveQueue(offset: Int) {
+        val target = videoQueue.getOrNull(currentQueueIndex + offset)
+        if (target == null) {
+            Toast.makeText(this, if (offset > 0) "Não há próximo vídeo nos resultados." else "Este é o primeiro vídeo dos resultados.", Toast.LENGTH_SHORT).show()
+            return
+        }
+        playVideo(target)
+    }
+
+    private fun buildPipAction(action: String, requestCode: Int, iconRes: Int, title: String): RemoteAction {
+        val intent = Intent(this, MainActivity::class.java).setAction(action)
+        val pending = PendingIntent.getActivity(this, requestCode, intent, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
+        return RemoteAction(Icon.createWithResource(this, iconRes), title, title, pending)
+    }
+
+    private fun updatePictureInPictureActions(): PictureInPictureParams = PictureInPictureParams.Builder()
+        .setAspectRatio(Rational(16, 9))
+        .setActions(listOf(
+            buildPipAction("com.f1n0.nothingtube.PIP_PREVIOUS", 101, android.R.drawable.ic_media_previous, "Vídeo anterior"),
+            buildPipAction("com.f1n0.nothingtube.PIP_NEXT", 102, android.R.drawable.ic_media_next, "Próximo vídeo")
+        )).build()
+
+    override fun onNewIntent(intent: Intent?) {
+        super.onNewIntent(intent)
+        if (intent == null) return
+        setIntent(intent)
+        when (intent.action) {
+            "com.f1n0.nothingtube.PIP_PREVIOUS" -> moveQueue(-1)
+            "com.f1n0.nothingtube.PIP_NEXT" -> moveQueue(1)
+        }
+    }
+
     override fun onUserLeaveHint() {
         super.onUserLeaveHint()
         if (android.os.Build.VERSION.SDK_INT >= 26 && playerVisible && !fullscreenActive && exoPlayer?.isPlaying == true) {
-            try { enterPictureInPictureMode(PictureInPictureParams.Builder().setAspectRatio(Rational(16, 9)).build()) } catch (_: Exception) { }
+            try { enterPictureInPictureMode(updatePictureInPictureActions()) } catch (_: Exception) { }
         }
     }
 
