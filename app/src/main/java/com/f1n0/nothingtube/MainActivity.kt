@@ -1099,6 +1099,58 @@ class MainActivity : Activity() {
         return ""
     }
 
+    private fun loadYouTubeComments(videoId: String, container: LinearLayout) {
+        container.removeAllViews()
+        container.addView(TextView(this).apply {
+            text = "CARREGANDO COMENTÁRIOS…"
+            textSize = 12f
+            setTextColor(mutedColor)
+            setPadding(0, dp(8), 0, dp(12))
+        })
+        networkExecutor.execute {
+            val comments = fetchVideoComments(videoId)
+            mainHandler.post {
+                if (isFinishing || isDestroyed || !playerVisible || currentVideoId != videoId || currentCommentsContainer !== container) return@post
+                container.removeAllViews()
+                if (comments.isEmpty()) {
+                    container.addView(TextView(this).apply {
+                        text = "Nenhum comentário retornado. O vídeo pode estar com comentários desativados ou o YouTube pode limitar esta consulta."
+                        textSize = 13f
+                        setTextColor(mutedColor)
+                        setPadding(0, 0, 0, dp(12))
+                    })
+                } else comments.take(30).forEach { comment ->
+                    val item = LinearLayout(this).apply {
+                        orientation = LinearLayout.VERTICAL
+                        setPadding(0, dp(10), 0, dp(12))
+                    }
+                    item.addView(TextView(this).apply {
+                        text = comment.author + if (comment.published.isNotBlank()) "  ·  " + comment.published else ""
+                        textSize = 12f
+                        setTypeface(null, Typeface.BOLD)
+                        setTextColor(Color.rgb(220, 220, 220))
+                    })
+                    item.addView(TextView(this).apply {
+                        text = comment.text
+                        textSize = 13f
+                        setTextColor(Color.rgb(205, 205, 205))
+                        setPadding(0, dp(5), 0, dp(4))
+                    })
+                    if (comment.likes.isNotBlank() && comment.likes != "0") item.addView(TextView(this).apply {
+                        text = "♡  " + comment.likes
+                        textSize = 11f
+                        setTextColor(mutedColor)
+                    })
+                    container.addView(item)
+                    container.addView(View(this).apply {
+                        setBackgroundColor(Color.rgb(42, 42, 42))
+                        layoutParams = LinearLayout.LayoutParams(-1, dp(1))
+                    })
+                }
+            }
+        }
+    }
+
     private fun fetchVideoComments(videoId: String): List<VideoComment> {
         var pageConnection: HttpURLConnection? = null
         try {
