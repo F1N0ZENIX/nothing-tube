@@ -1750,6 +1750,28 @@ class MainActivity : Activity() {
         browser.loadUrl(url)
     }
 
+    private fun applyHomeAccent(view: View) {
+        if (view is TextView) {
+            val current = view.currentTextColor
+            if (current == Color.rgb(255, 98, 93) || current == Color.rgb(229, 57, 53)) {
+                view.setTextColor(accentColor)
+            }
+            if (view is Button) {
+                view.backgroundTintList = android.content.res.ColorStateList.valueOf(
+                    if (view.id == R.id.searchButton) accentColor else surfaceColor
+                )
+                view.gravity = Gravity.CENTER
+                view.includeFontPadding = false
+                view.minWidth = 0
+                view.minHeight = 0
+                view.setPadding(dp(4), dp(4), dp(4), dp(4))
+            }
+        }
+        if (view is android.view.ViewGroup) {
+            for (i in 0 until view.childCount) applyHomeAccent(view.getChildAt(i))
+        }
+    }
+
     private fun showHome() {
         playerVisible = false
         releaseNativePlayer()
@@ -1760,7 +1782,10 @@ class MainActivity : Activity() {
         resultsContainer = null
         homeVisible = true
         setContentView(R.layout.activity_main)
-        findViewById<android.view.ViewGroup>(android.R.id.content).getChildAt(0)?.let { applySystemInsets(it) }
+        findViewById<android.view.ViewGroup>(android.R.id.content).getChildAt(0)?.let {
+            applySystemInsets(it)
+            applyHomeAccent(it)
+        }
         bindHome()
     }
 
