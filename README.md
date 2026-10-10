@@ -3,10 +3,10 @@
 Aplicativo Android em Kotlin, com interface escura inspirada na estética minimalista da Nothing.
 
 ## Recursos atuais
-- Interface escura com detalhes vermelhos e ícone próprio do Nothing Tube.
+- Interface escura refinada, superfícies arredondadas, detalhes vermelhos e ícone pontilhado inspirado no símbolo de reprodução do YouTube.
 - Pesquisa com cartões nativos, miniaturas, título, canal e duração.
 - Carregamento automático de mais resultados ao rolar a lista, usando continuação da pesquisa do YouTube.
-- Player incorporado na tela do app ao tocar em um vídeo.
+- Player incorporado na tela do app ao tocar em um vídeo, usando uma página HTML responsiva, suporte a cookies do player e controles de mídia.
 - Histórico local de pesquisas, com opção para limpar.
 - Atalhos para explorar vídeos populares e abrir o YouTube Music.
 - Ajustes de área segura para evitar que a barra de status/notificações cubra os controles.
