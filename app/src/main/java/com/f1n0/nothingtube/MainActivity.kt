@@ -586,8 +586,7 @@ class MainActivity : Activity() {
             setOnClickListener { playVideo(video) }
         }
 
-        val thumbnailFrame = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
+        val thumbnailFrame = FrameLayout(this).apply {
             background = roundedBackground(Color.rgb(35, 35, 35), 10)
             layoutParams = LinearLayout.LayoutParams(-1, dp(184))
         }
@@ -595,9 +594,23 @@ class MainActivity : Activity() {
             scaleType = ImageView.ScaleType.CENTER_CROP
             setBackgroundColor(Color.rgb(35, 35, 35))
             contentDescription = video.title
-            layoutParams = LinearLayout.LayoutParams(-1, -1)
+            layoutParams = FrameLayout.LayoutParams(-1, -1)
         }
         thumbnailFrame.addView(image)
+        if (video.duration.isNotBlank()) {
+            thumbnailFrame.addView(TextView(this).apply {
+                text = video.duration
+                textSize = 10f
+                setTypeface(null, Typeface.BOLD)
+                setTextColor(Color.WHITE)
+                setPadding(dp(7), dp(4), dp(7), dp(4))
+                background = roundedBackground(Color.argb(220, 0, 0, 0), 6)
+                layoutParams = FrameLayout.LayoutParams(-2, -2, Gravity.END or Gravity.BOTTOM).apply {
+                    marginEnd = dp(9)
+                    bottomMargin = dp(9)
+                }
+            })
+        }
         card.addView(thumbnailFrame)
 
         val title = TextView(this).apply {
