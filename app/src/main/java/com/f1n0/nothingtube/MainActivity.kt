@@ -747,6 +747,31 @@ class MainActivity : Activity() {
         }
         details.addView(channel)
 
+        val status = TextView(this).apply {
+            text = "CONECTANDO AO STREAM…"
+            textSize = 12f
+            letterSpacing = 0.04f
+            setTextColor(mutedColor)
+            gravity = Gravity.CENTER
+            setPadding(dp(22), dp(24), dp(22), dp(24))
+        }
+        details.addView(status)
+
+        val retryButton = Button(this).apply {
+            text = "TENTAR NOVAMENTE"
+            isAllCaps = false
+            textSize = 13f
+            setTextColor(Color.WHITE)
+            backgroundTintList = android.content.res.ColorStateList.valueOf(Color.rgb(44, 44, 44))
+            visibility = View.GONE
+            layoutParams = LinearLayout.LayoutParams(-1, dp(48)).apply {
+                setMargins(dp(18), dp(4), dp(18), dp(18))
+            }
+            setOnClickListener { playVideo(video) }
+        }
+        details.addView(retryButton)
+
+
         val sectionDivider = View(this).apply {
             setBackgroundColor(Color.rgb(42, 42, 42))
             layoutParams = LinearLayout.LayoutParams(-1, dp(1)).apply {
@@ -795,29 +820,6 @@ class MainActivity : Activity() {
         }
         details.addView(commentsPlaceholder)
 
-        val status = TextView(this).apply {
-            text = "CONECTANDO AO STREAM…"
-            textSize = 12f
-            letterSpacing = 0.04f
-            setTextColor(mutedColor)
-            gravity = Gravity.CENTER
-            setPadding(dp(22), dp(24), dp(22), dp(24))
-        }
-        details.addView(status)
-
-        val retryButton = Button(this).apply {
-            text = "TENTAR NOVAMENTE"
-            isAllCaps = false
-            textSize = 13f
-            setTextColor(Color.WHITE)
-            backgroundTintList = android.content.res.ColorStateList.valueOf(Color.rgb(44, 44, 44))
-            visibility = View.GONE
-            layoutParams = LinearLayout.LayoutParams(-1, dp(48)).apply {
-                setMargins(dp(18), dp(4), dp(18), dp(18))
-            }
-            setOnClickListener { playVideo(video) }
-        }
-        details.addView(retryButton)
         setContentView(root)
 
         networkExecutor.execute {
