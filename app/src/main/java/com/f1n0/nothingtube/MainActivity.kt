@@ -24,6 +24,14 @@ import android.widget.ProgressBar
 import android.widget.ScrollView
 import android.widget.TextView
 import android.widget.Toast
+import androidx.media3.common.MediaItem
+import androidx.media3.common.MimeTypes
+import androidx.media3.datasource.DefaultDataSource
+import androidx.media3.datasource.DefaultHttpDataSource
+import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
+import androidx.media3.ui.AspectRatioFrameLayout
+import androidx.media3.ui.PlayerView
 import org.json.JSONArray
 import org.json.JSONObject
 import java.net.HttpURLConnection
@@ -35,6 +43,9 @@ class MainActivity : Activity() {
 
     private lateinit var searchInput: EditText
     private var webView: WebView? = null
+    private var exoPlayer: ExoPlayer? = null
+    private var nativePlayerView: PlayerView? = null
+    private var playerVisible = false
     private var homeVisible = true
     private var activeSearch = ""
     private var searchProgress: ProgressBar? = null
@@ -539,9 +550,7 @@ class MainActivity : Activity() {
             }
             isClickable = true
             isFocusable = true
-            setOnClickListener {
-                showInternalPage("https://m.youtube.com/watch?v=${video.id}&autoplay=1", "ASSISTINDO")
-            }
+            setOnClickListener { playVideo(video) }
         }
 
         val thumbnailFrame = LinearLayout(this).apply {
@@ -597,6 +606,211 @@ class MainActivity : Activity() {
             }
         }
         return card
+    }
+
+    /**
+     * Plays the selected YouTube video in a native Media3/ExoPlayer view.
+     * Invidious is used only to resolve a playable media URL; playback itself is native.
+     */
+    private fun playVideo(video: VideoResult) {
+        webView?.stopLoading()
+        webView?.destroy()
+        webView = null
+        releaseNativePlayer()
+        homeVisible = false
+        playerVisible = true
+
+        val root = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setBackgroundColor(backgroundColor)
+        }
+        applySystemInsets(root)
+
+        val toolbar = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(dp(14), dp(8), dp(14), dp(8))
+        }
+        val back = TextView(this).apply {
+            text = "‹"
+            textSize = 34f
+            gravity = Gravity.CENTER
+            setTextColor(textColor)
+            background = roundedBackground(surfaceColor, 16)
+            layoutParams = LinearLayout.LayoutParams(dp(44), dp(44))
+            contentDescription = "Voltar aos resultados"
+            setOnClickListener { closeNativePlayer() }
+        }
+        val heading = TextView(this).apply {
+            text = "NOW PLAYING"
+            textSize = 12f
+            letterSpacing = 0.14f
+            setTypeface(null, Typeface.BOLD)
+            setTextColor(textColor)
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(dp(14), 0, 0, 0)
+            layoutParams = LinearLayout.LayoutParams(0, dp(44), 1f)
+        }
+        val dot = TextView(this).apply {
+            text = "●"
+            textSize = 16f
+            setTextColor(accentColor)
+            gravity = Gravity.CENTER
+            layoutParams = LinearLayout.LayoutParams(dp(28), dp(44))
+        }
+        toolbar.addView(back)
+        toolbar.addView(heading)
+        toolbar.addView(dot)
+        root.addView(toolbar)
+        root.addView(View(this).apply {
+            setBackgroundColor(Color.rgb(42, 42, 42))
+            layoutParams = LinearLayout.LayoutParams(-1, dp(1))
+        })
+
+        val player = PlayerView(this).apply {
+            setBackgroundColor(Color.BLACK)
+            useController = true
+            controllerAutoShow = true
+            resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
+            layoutParams = LinearLayout.LayoutParams(-1, dp(236))
+        }
+        nativePlayerView = player
+        root.addView(player)
+
+        val title = TextView(this).apply {
+            text = video.title
+            textSize = 19f
+            setTypeface(null, Typeface.BOLD)
+            setTextColor(textColor)
+            setPadding(dp(18), dp(20), dp(18), dp(8))
+        }
+        root.addView(title)
+        val channel = TextView(this).apply {
+            text = video.channel.ifBlank { "YouTube" }
+            textSize = 13f
+            setTextColor(mutedColor)
+            setPadding(dp(18), 0, dp(18), dp(16))
+        }
+        root.addView(channel)
+
+        val status = TextView(this).apply {
+            text = "PREPARANDO PLAYER NATIVO…"
+            textSize = 11f
+            letterSpacing = 0.06f
+            setTextColor(mutedColor)
+            gravity = Gravity.CENTER
+            setPadding(dp(20), dp(24), dp(20), dp(24))
+        }
+        root.addView(status)
+        setContentView(root)
+
+        networkExecutor.execute {
+            val resolved = resolvePlayableStream(video.id)
+            mainHandler.post {
+                if (isFinishing || isDestroyed || !playerVisible || nativePlayerView !== player) return@post
+                if (resolved == null) {
+                    status.text = "Não foi possível obter o fluxo deste vídeo. Tente outro vídeo ou novamente mais tarde."
+                    return@post
+                }
+                status.visibility = View.GONE
+                try {
+                    val httpFactory = DefaultHttpDataSource.Factory()
+                        .setUserAgent("Mozilla/5.0 (Linux; Android 15) AppleWebKit/537.36 Chrome/131.0.0.0 Mobile Safari/537.36")
+                        .setConnectTimeoutMs(15000)
+                        .setReadTimeoutMs(20000)
+                        .setDefaultRequestProperties(mapOf("Referer" to "https://www.youtube.com/"))
+                    val dataSourceFactory = DefaultDataSource.Factory(this, httpFactory)
+                    val mediaSourceFactory = DefaultMediaSourceFactory(dataSourceFactory)
+                    val newPlayer = ExoPlayer.Builder(this)
+                        .setMediaSourceFactory(mediaSourceFactory)
+                        .build()
+                    exoPlayer = newPlayer
+                    player.player = newPlayer
+                    val item = if (resolved.endsWith(".m3u8", ignoreCase = true)) {
+                        MediaItem.Builder().setUri(resolved).setMimeType(MimeTypes.APPLICATION_M3U8).build()
+                    } else {
+                        MediaItem.fromUri(resolved)
+                    }
+                    newPlayer.setMediaItem(item)
+                    newPlayer.prepare()
+                    newPlayer.playWhenReady = true
+                    newPlayer.addListener(object : androidx.media3.common.Player.Listener {
+                        override fun onPlayerError(error: PlaybackException) {
+                            if (!isFinishing && !isDestroyed) {
+                                status.visibility = View.VISIBLE
+                                status.text = "Falha na reprodução. O fluxo pode ter expirado; volte e tente novamente."
+                            }
+                        }
+                    })
+                } catch (_: Exception) {
+                    status.visibility = View.VISIBLE
+                    status.text = "Não foi possível iniciar o player nativo."
+                }
+            }
+        }
+    }
+
+    private fun resolvePlayableStream(videoId: String): String? {
+        val instances = listOf(
+            "https://inv.nadeko.net",
+            "https://invidious.nerdvpn.de",
+            "https://invidious.privacyredirect.com"
+        )
+        for (instance in instances) {
+            var connection: HttpURLConnection? = null
+            try {
+                connection = (URL("$instance/api/v1/videos/$videoId").openConnection() as HttpURLConnection).apply {
+                    requestMethod = "GET"
+                    connectTimeout = 10000
+                    readTimeout = 15000
+                    setRequestProperty("User-Agent", "Mozilla/5.0 (Linux; Android 15) AppleWebKit/537.36 Chrome/131.0.0.0 Mobile Safari/537.36")
+                    setRequestProperty("Accept", "application/json")
+                }
+                if (connection.responseCode !in 200..299) continue
+                val json = connection.inputStream.bufferedReader(Charsets.UTF_8).use { JSONObject(it.readText()) }
+                val formats = json.optJSONArray("formatStreams")
+                if (formats != null && formats.length() > 0) {
+                    val candidates = (0 until formats.length()).mapNotNull { index ->
+                        val item = formats.optJSONObject(index) ?: return@mapNotNull null
+                        val url = item.optString("url").takeIf { it.startsWith("https://") } ?: return@mapNotNull null
+                        val type = item.optString("type")
+                        if (!type.contains("video/mp4", ignoreCase = true)) return@mapNotNull null
+                        val resolution = item.optString("resolution")
+                        val height = resolution.substringAfter("x", "").toIntOrNull()
+                            ?: Regex("(\\d+)p").find(item.optString("qualityLabel"))?.groupValues?.getOrNull(1)?.toIntOrNull()
+                            ?: 0
+                        Triple(url, height, item.optLong("bitrate", 0L))
+                    }
+                    val chosen = candidates.filter { it.second <= 720 }.maxWithOrNull(compareBy<Triple<String, Int, Long>> { it.second }.thenBy { it.third })
+                        ?: candidates.maxWithOrNull(compareBy<Triple<String, Int, Long>> { it.second }.thenBy { it.third })
+                    if (chosen != null) return chosen.first
+                }
+                val hls = json.optString("hlsUrl").takeIf { it.startsWith("https://") && it != "null" }
+                if (hls != null) return hls
+            } catch (_: Exception) {
+                // Try the next public instance.
+            } finally {
+                connection?.disconnect()
+            }
+        }
+        return null
+    }
+
+    private fun closeNativePlayer() {
+        releaseNativePlayer()
+        playerVisible = false
+        if (activeSearch.isNotBlank()) {
+            loadNativeSearch(activeSearch)
+        } else {
+            showHome()
+        }
+    }
+
+    private fun releaseNativePlayer() {
+        nativePlayerView?.player = null
+        nativePlayerView = null
+        exoPlayer?.release()
+        exoPlayer = null
     }
 
     private fun showInternalPage(url: String, heading: String) {
@@ -702,6 +916,8 @@ class MainActivity : Activity() {
     }
 
     private fun showHome() {
+        playerVisible = false
+        releaseNativePlayer()
         webView?.stopLoading()
         webView?.destroy()
         webView = null
@@ -726,6 +942,10 @@ class MainActivity : Activity() {
 
     @Suppress("DEPRECATION")
     override fun onBackPressed() {
+        if (playerVisible) {
+            closeNativePlayer()
+            return
+        }
         val browser = webView
         if (!homeVisible && browser != null) {
             if (browser.canGoBack()) browser.goBack() else showHome()
@@ -746,6 +966,7 @@ class MainActivity : Activity() {
         }
 
     override fun onDestroy() {
+        releaseNativePlayer()
         webView?.apply {
             stopLoading()
             loadUrl("about:blank")
