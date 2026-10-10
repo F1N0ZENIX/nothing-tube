@@ -19,6 +19,7 @@ import android.webkit.WebView
 import android.webkit.WebViewClient
 import android.widget.Button
 import android.widget.EditText
+import android.widget.FrameLayout
 import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.ProgressBar
@@ -49,6 +50,8 @@ class MainActivity : Activity() {
     private var exoPlayer: ExoPlayer? = null
     private var nativePlayerView: PlayerView? = null
     private var playerVisible = false
+    private var fullscreenActive = false
+    private var exitFullscreenAction: (() -> Unit)? = null
     private var homeVisible = true
     private var activeSearch = ""
     private var searchProgress: ProgressBar? = null
@@ -78,6 +81,13 @@ class MainActivity : Activity() {
         val views: String,
         val duration: String,
         val thumbnail: String
+    )
+
+    private data class VideoComment(
+        val author: String,
+        val text: String,
+        val likes: String,
+        val published: String
     )
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -700,24 +710,54 @@ class MainActivity : Activity() {
                 }
             }
         }
+        val fullscreenButton = TextView(this).apply {
+            text = "⛶"
+            textSize = 23f
+            setTextColor(textColor)
+            gravity = Gravity.CENTER
+            background = roundedBackground(surfaceColor, 14)
+            contentDescription = "Alternar tela cheia"
+            layoutParams = LinearLayout.LayoutParams(dp(42), dp(44)).apply { marginEnd = dp(6) }
+        }
         toolbar.addView(back)
         toolbar.addView(heading)
+        toolbar.addView(fullscreenButton)
         toolbar.addView(optionsButton)
         root.addView(toolbar)
-        root.addView(View(this).apply {
+        val toolbarDivider = View(this).apply {
             setBackgroundColor(Color.rgb(42, 42, 42))
             layoutParams = LinearLayout.LayoutParams(-1, dp(1))
-        })
+        }
+        root.addView(toolbarDivider)
 
         val player = PlayerView(this).apply {
             setBackgroundColor(Color.BLACK)
             useController = true
             controllerAutoShow = true
             resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
-            layoutParams = LinearLayout.LayoutParams(-1, dp(236))
+            layoutParams = FrameLayout.LayoutParams(-1, -1)
         }
         nativePlayerView = player
-        root.addView(player)
+        val playerFrame = FrameLayout(this).apply {
+            setBackgroundColor(Color.BLACK)
+            layoutParams = LinearLayout.LayoutParams(-1, dp(236))
+        }
+        playerFrame.addView(player)
+        val fullscreenOverlayButton = TextView(this).apply {
+            text = "⤢"
+            textSize = 22f
+            setTextColor(Color.WHITE)
+            gravity = Gravity.CENTER
+            background = roundedBackground(Color.argb(180, 25, 25, 25), 12)
+            contentDescription = "Sair da tela cheia"
+            visibility = View.GONE
+            layoutParams = FrameLayout.LayoutParams(dp(44), dp(44), Gravity.TOP or Gravity.END).apply {
+                topMargin = dp(12)
+                marginEnd = dp(12)
+            }
+        }
+        playerFrame.addView(fullscreenOverlayButton)
+        root.addView(playerFrame)
 
         val detailsScroll = ScrollView(this).apply {
             isFillViewport = false
@@ -812,13 +852,32 @@ class MainActivity : Activity() {
             setPadding(dp(18), dp(4), dp(18), dp(8))
         }
         details.addView(commentsHeading)
-        val commentsPlaceholder = TextView(this).apply {
-            text = "Os comentários ainda não estão disponíveis no Nothing Tube. Você poderá acompanhar essa área em uma versão futura."
-            textSize = 13f
-            setTextColor(mutedColor)
+        val commentsContainer = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
             setPadding(dp(18), 0, dp(18), dp(18))
         }
-        details.addView(commentsPlaceholder)
+        details.addView(commentsContainer)
+
+        var fullscreen = false
+        fun toggleFullscreen() {
+            fullscreen = !fullscreen
+            fullscreenActive = fullscreen
+            toolbar.visibility = if (fullscreen) View.GONE else View.VISIBLE
+            toolbarDivider.visibility = if (fullscreen) View.GONE else View.VISIBLE
+            detailsScroll.visibility = if (fullscreen) View.GONE else View.VISIBLE
+            playerFrame.layoutParams = LinearLayout.LayoutParams(-1, if (fullscreen) 0 else dp(236), if (fullscreen) 1f else 0f)
+            fullscreenOverlayButton.visibility = if (fullscreen) View.VISIBLE else View.GONE
+            fullscreenButton.text = if (fullscreen) "⤢" else "⛶"
+            window.decorView.systemUiVisibility = if (fullscreen) {
+                View.SYSTEM_UI_FLAG_FULLSCREEN or View.SYSTEM_UI_FLAG_HIDE_NAVIGATION or
+                    View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY or View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN or
+                    View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION or View.SYSTEM_UI_FLAG_LAYOUT_STABLE
+            } else View.SYSTEM_UI_FLAG_VISIBLE
+            player.showController()
+        }
+        fullscreenButton.setOnClickListener { toggleFullscreen() }
+        fullscreenOverlayButton.setOnClickListener { if (fullscreen) toggleFullscreen() }
+        exitFullscreenAction = { if (fullscreen) toggleFullscreen() }
 
         setContentView(root)
 
@@ -826,7 +885,51 @@ class MainActivity : Activity() {
             val description = fetchVideoDescription(video.id)
             mainHandler.post {
                 if (!isFinishing && !isDestroyed && playerVisible && nativePlayerView === player) {
-                    descriptionText.text = description.ifBlank { "A descrição não está disponível no momento." }
+                    descriptionText.text = description.ifBlank { "Descrição indisponível. Tente novamente mais tarde." }
+                }
+            }
+        }
+        networkExecutor.execute {
+            val comments = fetchVideoComments(video.id)
+            mainHandler.post {
+                if (isFinishing || isDestroyed || !playerVisible || nativePlayerView !== player) return@post
+                commentsContainer.removeAllViews()
+                if (comments.isEmpty()) {
+                    commentsContainer.addView(TextView(this).apply {
+                        text = "Não foi possível carregar os comentários. Eles podem estar desativados ou o YouTube pode ter limitado o acesso."
+                        textSize = 13f
+                        setTextColor(mutedColor)
+                        setPadding(0, 0, 0, dp(12))
+                    })
+                } else {
+                    comments.take(30).forEach { comment ->
+                        val item = LinearLayout(this).apply {
+                            orientation = LinearLayout.VERTICAL
+                            setPadding(0, dp(10), 0, dp(12))
+                        }
+                        item.addView(TextView(this).apply {
+                            text = comment.author + if (comment.published.isNotBlank()) "  ·  " + comment.published else ""
+                            textSize = 12f
+                            setTypeface(null, Typeface.BOLD)
+                            setTextColor(Color.rgb(220, 220, 220))
+                        })
+                        item.addView(TextView(this).apply {
+                            text = comment.text
+                            textSize = 13f
+                            setTextColor(Color.rgb(205, 205, 205))
+                            setPadding(0, dp(5), 0, dp(4))
+                        })
+                        if (comment.likes.isNotBlank()) item.addView(TextView(this).apply {
+                            text = "♡  " + comment.likes
+                            textSize = 11f
+                            setTextColor(mutedColor)
+                        })
+                        commentsContainer.addView(item)
+                        commentsContainer.addView(View(this).apply {
+                            setBackgroundColor(Color.rgb(42, 42, 42))
+                            layoutParams = LinearLayout.LayoutParams(-1, dp(1))
+                        })
+                    }
                 }
             }
         }
@@ -943,23 +1046,118 @@ class MainActivity : Activity() {
     }
 
     private fun fetchVideoDescription(videoId: String): String {
-        var connection: HttpURLConnection? = null
-        return try {
-            connection = (URL("https://www.youtube.com/watch?v=$videoId").openConnection() as HttpURLConnection).apply {
-                requestMethod = "GET"
-                connectTimeout = 8000
-                readTimeout = 10000
+        try {
+            val connection = (URL("https://www.youtube.com/watch?v=$videoId&hl=pt-BR").openConnection() as HttpURLConnection).apply {
+                connectTimeout = 12000
+                readTimeout = 15000
+                instanceFollowRedirects = true
                 setRequestProperty("User-Agent", "Mozilla/5.0 (Linux; Android 15) AppleWebKit/537.36 Chrome/131.0.0.0 Mobile Safari/537.36")
-                setRequestProperty("Accept-Language", "pt-BR,pt;q=0.9,en;q=0.7")
+                setRequestProperty("Accept-Language", "pt-BR,pt;q=0.9,en-US;q=0.8,en;q=0.7")
+                setRequestProperty("Cookie", "CONSENT=YES+")
             }
-            val html = connection.inputStream.bufferedReader(Charsets.UTF_8).use { it.readText() }
-            val playerResponse = extractJsonObjectAfter(html, "ytInitialPlayerResponse")
-            playerResponse?.optJSONObject("videoDetails")?.optString("shortDescription").orEmpty()
-                .takeIf { it.isNotBlank() && it != "null" }.orEmpty()
+            val html = try { connection.inputStream.bufferedReader(Charsets.UTF_8).use { it.readText() } } finally { connection.disconnect() }
+            val playerResponse = extractJsonObjectAfter(html, "ytInitialPlayerResponse") ?: extractJsonObjectAfter(html, "playerResponse")
+            val description = playerResponse?.optJSONObject("videoDetails")?.optString("shortDescription").orEmpty()
+            if (description.isNotBlank() && description != "null") return description
+        } catch (_: Exception) { }
+        for (instance in listOf("https://inv.nadeko.net", "https://invidious.nerdvpn.de", "https://iv.datura.network")) {
+            var connection: HttpURLConnection? = null
+            try {
+                connection = (URL("$instance/api/v1/videos/$videoId").openConnection() as HttpURLConnection).apply {
+                    connectTimeout = 5000
+                    readTimeout = 7000
+                    setRequestProperty("User-Agent", "Mozilla/5.0")
+                    setRequestProperty("Accept", "application/json")
+                }
+                if (connection.responseCode !in 200..299) continue
+                val json = connection.inputStream.bufferedReader(Charsets.UTF_8).use { JSONObject(it.readText()) }
+                val description = json.optString("description").takeIf { it.isNotBlank() && it != "null" }
+                if (description != null) return description
+            } catch (_: Exception) {
+            } finally { connection?.disconnect() }
+        }
+        return ""
+    }
+
+    private fun fetchVideoComments(videoId: String): List<VideoComment> {
+        var pageConnection: HttpURLConnection? = null
+        try {
+            pageConnection = (URL("https://www.youtube.com/watch?v=$videoId&hl=pt-BR").openConnection() as HttpURLConnection).apply {
+                connectTimeout = 12000
+                readTimeout = 15000
+                instanceFollowRedirects = true
+                setRequestProperty("User-Agent", "Mozilla/5.0 (Linux; Android 15) AppleWebKit/537.36 Chrome/131.0.0.0 Mobile Safari/537.36")
+                setRequestProperty("Accept-Language", "pt-BR,pt;q=0.9,en-US;q=0.8,en;q=0.7")
+                setRequestProperty("Cookie", "CONSENT=YES+")
+            }
+            val html = pageConnection.inputStream.bufferedReader(Charsets.UTF_8).use { it.readText() }
+            val apiKey = html.substringAfter("INNERTUBE_API_KEY", "").substringAfter(":", "")
+                .let { Regex("[A-Za-z0-9_-]{20,}").find(it)?.value }
+            val context = extractJsonObjectAfter(html, "INNERTUBE_CONTEXT")
+            val initialData = extractJsonObjectAfter(html, "ytInitialData")
+            val comments = mutableListOf<VideoComment>()
+            if (initialData != null) collectComments(initialData, comments)
+            val continuation = initialData?.let { findCommentsContinuation(it) }
+            pageConnection.disconnect()
+            pageConnection = null
+            if (comments.size >= 20 || apiKey.isNullOrBlank() || context == null || continuation.isNullOrBlank()) {
+                return comments.distinctBy { it.author + it.text }.take(30)
+            }
+            val body = JSONObject().put("context", context).put("continuation", continuation).toString()
+            val connection = (URL("https://www.youtube.com/youtubei/v1/next?key=$apiKey").openConnection() as HttpURLConnection).apply {
+                requestMethod = "POST"
+                doOutput = true
+                connectTimeout = 10000
+                readTimeout = 12000
+                setRequestProperty("Content-Type", "application/json")
+                setRequestProperty("User-Agent", "Mozilla/5.0 (Linux; Android 15) AppleWebKit/537.36 Chrome/131.0.0.0 Mobile Safari/537.36")
+                setRequestProperty("Origin", "https://www.youtube.com")
+            }
+            try {
+                connection.outputStream.use { it.write(body.toByteArray(Charsets.UTF_8)) }
+                val response = connection.inputStream.bufferedReader(Charsets.UTF_8).use { it.readText() }
+                collectComments(JSONObject(response), comments)
+            } finally { connection.disconnect() }
+            return comments.distinctBy { it.author + it.text }.take(30)
         } catch (_: Exception) {
-            ""
-        } finally {
-            connection?.disconnect()
+            return emptyList()
+        } finally { pageConnection?.disconnect() }
+    }
+
+    private fun findCommentsContinuation(data: Any?): String? {
+        when (data) {
+            is JSONObject -> {
+                if (data.optString("sectionIdentifier") == "comment-item-section") return findNextContinuationToken(data)
+                val keys = data.keys()
+                while (keys.hasNext()) {
+                    val found = findCommentsContinuation(data.opt(keys.next()))
+                    if (!found.isNullOrBlank()) return found
+                }
+            }
+            is JSONArray -> for (i in 0 until data.length()) {
+                val found = findCommentsContinuation(data.opt(i))
+                if (!found.isNullOrBlank()) return found
+            }
+        }
+        return null
+    }
+
+    private fun collectComments(data: Any?, output: MutableList<VideoComment>) {
+        when (data) {
+            is JSONObject -> {
+                val thread = data.optJSONObject("commentThreadRenderer")
+                val renderer = thread?.optJSONObject("comment")?.optJSONObject("commentRenderer")
+                if (renderer != null) {
+                    val author = textFromRuns(renderer.optJSONObject("authorText")).ifBlank { "Usuário do YouTube" }
+                    val body = textFromRuns(renderer.optJSONObject("contentText"))
+                    val likes = renderer.optJSONObject("voteCount")?.optString("simpleText").orEmpty()
+                    val published = renderer.optJSONObject("publishedTimeText")?.optString("simpleText").orEmpty()
+                    if (body.isNotBlank()) output.add(VideoComment(author, body, likes, published))
+                }
+                val keys = data.keys()
+                while (keys.hasNext()) collectComments(data.opt(keys.next()), output)
+            }
+            is JSONArray -> for (i in 0 until data.length()) collectComments(data.opt(i), output)
         }
     }
 
@@ -1064,6 +1262,11 @@ class MainActivity : Activity() {
     }
 
     private fun closeNativePlayer() {
+        if (fullscreenActive) {
+            fullscreenActive = false
+            window.decorView.systemUiVisibility = View.SYSTEM_UI_FLAG_VISIBLE
+        }
+        exitFullscreenAction = null
         releaseNativePlayer()
         playerVisible = false
         if (activeSearch.isNotBlank()) {
@@ -1209,6 +1412,10 @@ class MainActivity : Activity() {
 
     @Suppress("DEPRECATION")
     override fun onBackPressed() {
+        if (playerVisible && fullscreenActive) {
+            exitFullscreenAction?.invoke()
+            return
+        }
         if (playerVisible) {
             closeNativePlayer()
             return
@@ -1233,6 +1440,9 @@ class MainActivity : Activity() {
         }
 
     override fun onDestroy() {
+        window.decorView.systemUiVisibility = View.SYSTEM_UI_FLAG_VISIBLE
+        fullscreenActive = false
+        exitFullscreenAction = null
         releaseNativePlayer()
         webView?.apply {
             stopLoading()
