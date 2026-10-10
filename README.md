@@ -1,42 +1,51 @@
-# Nothing Tube — MVP 0.2.0
+# Nothing Tube — versão 1.0
 
-Aplicativo Android em Kotlin, com interface escura inspirada na estética minimalista da Nothing.
+Aplicativo Android nativo em Kotlin, com visual AMOLED escuro inspirado na linguagem minimalista da Nothing e detalhes vermelhos.
 
-## Recursos atuais
-- Interface escura refinada, superfícies arredondadas, detalhes vermelhos e ícone pontilhado inspirado no símbolo de reprodução do YouTube.
-- Pesquisa com cartões nativos, miniaturas, título, canal e duração.
-- Carregamento automático de mais resultados ao rolar a lista, usando continuação da pesquisa do YouTube.
-- Player incorporado na tela do app ao tocar em um vídeo, usando uma página HTML responsiva, suporte a cookies do player e controles de mídia.
-- Histórico local de pesquisas, com opção para limpar.
+## Recursos
+
+- Pesquisa de vídeos do YouTube com cartões nativos, miniaturas, canal, duração e carregamento contínuo de resultados.
+- Reprodução por player nativo Media3/ExoPlayer, com tentativa de resolver o stream por NewPipe Extractor e serviços públicos alternativos.
+- Modo picture-in-picture (PiP) com ações para **vídeo anterior** e **próximo vídeo** dentro dos resultados carregados da pesquisa.
+- Modo de tela cheia e preservação do estado da interface ao girar o aparelho.
+- Descrição do vídeo e tentativa de carregar comentários públicos.
+- Comentários em modo de leitura nesta versão. **Login Google e publicação de comentários foram removidos temporariamente** para simplificar o aplicativo enquanto essa parte é retrabalhada.
+- Histórico de pesquisas salvo localmente, com opção para apagar.
 - Atalhos para explorar vídeos populares e abrir o YouTube Music.
-- Ajustes de área segura para evitar que a barra de status/notificações cubra os controles.
-- Build automatizado do APK debug pelo GitHub Actions.
+- Interface atualizada na tela inicial, resultados, player e páginas internas.
+- Compilação automática do APK debug pelo GitHub Actions.
 
-## Observações
-- A pesquisa usa dados da página e da interface interna do YouTube, sem uma chave oficial de API. O formato pode mudar ou o serviço pode limitar requisições; nesse caso, a pesquisa ou o carregamento contínuo pode falhar temporariamente.
-- A reprodução usa o player incorporado oficial do YouTube dentro de uma WebView. Por isso, anúncios, restrições de idade/região, disponibilidade do vídeo e políticas de reprodução continuam sob controle do YouTube. Este build ainda não extrai streams para um player nativo Media3 e não implementa reprodução em segundo plano.
-- O ícone e a interface são criações deste projeto. “Nothing Tube” é um projeto independente e não oficial.
+## Limitações conhecidas
 
-## Créditos e tecnologias
-- **YouTube Embedded Player / IFrame Player** — reprodução incorporada; documentação: https://developers.google.com/youtube/iframe_api_reference
-- **Android WebView** — componente Android usado para apresentar o player incorporado.
-- **Kotlin, Android SDK e Gradle** — tecnologias usadas no aplicativo.
-- A pesquisa e a paginação usam formatos internos do YouTube; não são uma API oficial garantida e podem exigir manutenção.
+- A pesquisa, a extração do stream, a descrição e os comentários usam páginas/formats internos do YouTube e/ou instâncias públicas não oficiais. Esses serviços podem mudar, ficar indisponíveis, limitar solicitações ou não retornar dados para determinados vídeos.
+- Os botões anterior/próximo do PiP navegam pela fila de vídeos dos resultados carregados. Eles não criam uma playlist oficial do YouTube; se não houver outro resultado na direção escolhida, o app avisa.
+- Comentários podem não aparecer se estiverem desativados, se a página não fornecer os dados ou se o YouTube limitar a consulta.
+- A reprodução em segundo plano e o PiP dependem do suporte do Android e das condições de reprodução do stream.
+- O aplicativo não é oficial e não tem afiliação com Nothing Technology Limited nem com Google/YouTube.
 
-Nenhum código do aplicativo NewPipe foi copiado ou incorporado nesta versão. O projeto não inclui atualmente a biblioteca AndroidX Media3/ExoPlayer; ela não reproduz diretamente URLs de páginas do YouTube sem uma etapa separada de obtenção do stream.
+## Tecnologias
 
-## Compilar pelo GitHub usando o celular
-1. Abra o repositório e vá para a aba **Actions**.
-2. Entre na execução mais recente do workflow **Build Nothing Tube APK**.
-3. Quando a execução terminar com sucesso, baixe o artefato **Nothing-Tube-debug**.
-4. Extraia o ZIP e instale o arquivo `app-debug.apk`. Talvez seja necessário autorizar a instalação pelo app usado para abrir o arquivo.
+- Kotlin, Android SDK, Gradle e Java 17.
+- AndroidX Media3 / ExoPlayer.
+- NewPipe Extractor, usado como uma das tentativas de resolver streams.
+- Android WebView para algumas páginas internas.
+
+## Gerar o APK pelo celular
+
+1. Abra [Actions do repositório](https://github.com/F1N0ZENIX/nothing-tube/actions).
+2. Entre na execução mais recente do workflow de build.
+3. Aguarde o job terminar com sucesso.
+4. Baixe o artefato **Nothing-Tube-debug**, extraia o ZIP e instale `app-debug.apk`. Se necessário, permita a instalação pelo aplicativo usado para abrir o arquivo.
 
 ## Requisitos
-- Android 8.0 ou superior (API 26+).
-- Java 17 e Gradle 8.9 no ambiente de build, configurados automaticamente.
 
-## Identificador
+- Android 8.0 ou superior (API 26+).
+- Java 17 no ambiente de compilação.
+
+## Identificador do aplicativo
+
 `com.f1n0.nothingtube`
 
 ## Licença e marca
-Projeto independente e não oficial, sem afiliação com Nothing Technology Limited ou Google/YouTube. O nome e a marca YouTube pertencem aos seus respectivos titulares.
+
+Projeto independente e não oficial. Os nomes e marcas de Nothing, Google e YouTube pertencem aos seus respectivos titulares.
