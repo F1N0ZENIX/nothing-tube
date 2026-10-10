@@ -984,6 +984,9 @@ class MainActivity : Activity() {
             textSize = 28f
             setTextColor(textColor)
             gravity = Gravity.CENTER
+            includeFontPadding = false
+            typeface = Typeface.create("sans-serif", Typeface.NORMAL)
+            setPadding(0, 0, 0, 0)
             background = roundedBackground(surfaceColor, 14)
             contentDescription = "Menu de opções do vídeo"
             layoutParams = LinearLayout.LayoutParams(dp(42), dp(44))
@@ -1030,6 +1033,8 @@ class MainActivity : Activity() {
             setTextColor(textColor)
             gravity = Gravity.CENTER
             includeFontPadding = false
+            typeface = Typeface.create("sans-serif", Typeface.NORMAL)
+            setPadding(0, 0, 0, 0)
             background = roundedBackground(surfaceColor, 14)
             contentDescription = "Alternar tela cheia"
             layoutParams = LinearLayout.LayoutParams(dp(42), dp(44)).apply { marginEnd = dp(6) }
@@ -1269,10 +1274,12 @@ class MainActivity : Activity() {
             window.decorView.systemUiVisibility = View.SYSTEM_UI_FLAG_VISIBLE
         }
         root.post {
-            if (!fullscreenActive && !pipActive && playerVisible) {
+            // The replacement view must be normal-sized even when the previous video was in PiP.
+            if (!fullscreenActive && playerVisible) {
                 window.clearFlags(android.view.WindowManager.LayoutParams.FLAG_FULLSCREEN)
                 window.decorView.systemUiVisibility = View.SYSTEM_UI_FLAG_VISIBLE
-            } else if (pipActive && android.os.Build.VERSION.SDK_INT >= 26) {
+            }
+            if (pipActive && android.os.Build.VERSION.SDK_INT >= 26) {
                 try { setPictureInPictureParams(updatePictureInPictureActions()) } catch (_: Exception) { }
             }
         }
@@ -1818,6 +1825,13 @@ class MainActivity : Activity() {
             if (current == Color.rgb(255, 98, 93) || current == Color.rgb(229, 57, 53)) {
                 view.setTextColor(accentColor)
             }
+            val glyph = view.text?.toString()?.trim().orEmpty()
+            if (glyph in setOf("⚙", "⌕", "→", "↗", "♫", "●", "⛶", "⤢", "⋮", "‹", "⏮", "⏭")) {
+                view.gravity = Gravity.CENTER
+                view.includeFontPadding = false
+                view.typeface = Typeface.create("sans-serif", Typeface.NORMAL)
+                view.setPadding(0, 0, 0, 0)
+            }
             if (view is Button) {
                 view.backgroundTintList = android.content.res.ColorStateList.valueOf(
                     if (view.id == R.id.searchButton) accentColor else surfaceColor
@@ -1826,7 +1840,9 @@ class MainActivity : Activity() {
                 view.includeFontPadding = false
                 view.minWidth = 0
                 view.minHeight = 0
-                view.setPadding(dp(4), dp(4), dp(4), dp(4))
+                view.setPadding(0, 0, 0, 0)
+                view.translationX = 0f
+                view.translationY = 0f
             }
         }
         if (view is android.view.ViewGroup) {
