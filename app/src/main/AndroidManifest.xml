@@ -9,6 +9,7 @@
         android:usesCleartextTraffic="false">
         <activity
             android:name=".MainActivity"
+            android:launchMode="singleTop"
             android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout|keyboardHidden"
             android:supportsPictureInPicture="true"
             android:exported="true">
