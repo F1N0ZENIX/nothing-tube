@@ -540,7 +540,7 @@ class MainActivity : Activity() {
             isClickable = true
             isFocusable = true
             setOnClickListener {
-                showInternalPage("https://www.youtube.com/embed/${video.id}?autoplay=1&playsinline=1&controls=1&rel=0", "ASSISTINDO")
+                showInternalPage("https://m.youtube.com/watch?v=${video.id}&autoplay=1", "ASSISTINDO")
             }
         }
 
@@ -664,8 +664,9 @@ class MainActivity : Activity() {
             settings.domStorageEnabled = true
             settings.loadsImagesAutomatically = true
             settings.javaScriptCanOpenWindowsAutomatically = false
+            settings.userAgentString = "Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Mobile Safari/537.36"
             settings.setSupportMultipleWindows(false)
-            settings.mediaPlaybackRequiresUserGesture = !url.contains("/embed/")
+            settings.mediaPlaybackRequiresUserGesture = true
             settings.allowContentAccess = true
             settings.allowFileAccess = false
             settings.setSupportZoom(false)
@@ -695,40 +696,9 @@ class MainActivity : Activity() {
         webView = browser
         root.addView(browser)
         setContentView(root)
-        if (url.contains("youtube.com/embed/")) {
-            val videoId = Regex("/embed/([A-Za-z0-9_-]+)").find(url)?.groupValues?.getOrNull(1)
-            if (videoId != null) {
-                val playerHtml = """
-                    <!doctype html>
-                    <html>
-                    <head>
-                      <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
-                      <style>
-                        html, body { margin:0; padding:0; width:100%; height:100%; background:#000; overflow:hidden; }
-                        .player { position:absolute; inset:0; display:flex; align-items:center; justify-content:center; }
-                        iframe { width:100%; aspect-ratio:16/9; border:0; background:#000; }
-                      </style>
-                    </head>
-                    <body>
-                      <div class="player">
-                        <iframe
-                          src="https://www.youtube.com/embed/$videoId?autoplay=1&amp;playsinline=1&amp;controls=1&amp;rel=0&amp;enablejsapi=1&amp;origin=https%3A%2F%2Fwww.youtube.com"
-                          title="YouTube video player"
-                          allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
-                          referrerpolicy="strict-origin-when-cross-origin"
-                          allowfullscreen>
-                        </iframe>
-                      </div>
-                    </body>
-                    </html>
-                """.trimIndent()
-                browser.loadDataWithBaseURL("https://www.youtube.com/", playerHtml, "text/html", "UTF-8", null)
-            } else {
-                browser.loadUrl(url)
-            }
-        } else {
-            browser.loadUrl(url)
-        }
+        // Load the real mobile watch page instead of a data-URL iframe.
+        // YouTube can reject embedded players in WebView with "Video not found" / error 153.
+        browser.loadUrl(url)
     }
 
     private fun showHome() {
