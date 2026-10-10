@@ -59,6 +59,7 @@ class MainActivity : Activity() {
     private var playerVisible = false
     private var fullscreenActive = false
     private var pipActive = false
+    private var preserveFullscreenOnNextVideo = false
     private var currentPlayerToolbar: View? = null
     private var currentPlayerToolbarDivider: View? = null
     private var currentPlayerDetails: View? = null
@@ -1273,6 +1274,10 @@ class MainActivity : Activity() {
             window.clearFlags(android.view.WindowManager.LayoutParams.FLAG_FULLSCREEN)
             window.decorView.systemUiVisibility = View.SYSTEM_UI_FLAG_VISIBLE
         }
+        if (preserveFullscreenOnNextVideo && !wasInPip) {
+            preserveFullscreenOnNextVideo = false
+            toggleFullscreen()
+        }
         root.post {
             // The replacement view must be normal-sized even when the previous video was in PiP.
             if (!fullscreenActive && playerVisible) {
@@ -1913,6 +1918,8 @@ class MainActivity : Activity() {
             Toast.makeText(this, if (offset > 0) "Não há próximo vídeo nos resultados." else "Este é o primeiro vídeo dos resultados.", Toast.LENGTH_SHORT).show()
             return
         }
+        // Keep fullscreen when skipping from fullscreen, but never carry it over from PiP.
+        preserveFullscreenOnNextVideo = fullscreenActive && !pipActive
         playVideo(target)
     }
 
