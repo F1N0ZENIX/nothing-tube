@@ -66,6 +66,7 @@ class MainActivity : Activity() {
     private var currentCommentsContainer: LinearLayout? = null
     private var currentDescriptionText: TextView? = null
     private var currentVideoId: String? = null
+    private var descriptionExpanded = false
     private val videoQueue = mutableListOf<VideoResult>()
     private var currentQueueIndex = -1
     private var exitFullscreenAction: (() -> Unit)? = null
@@ -937,7 +938,7 @@ class MainActivity : Activity() {
         homeVisible = false
         playerVisible = true
         val wasInPip = pipActive
-        // Reset immersive flags before replacing the old player view.
+        // A PiP skip must never inherit fullscreen/immersive state from the previous video.
         fullscreenActive = false
         exitFullscreenAction = null
         window.clearFlags(android.view.WindowManager.LayoutParams.FLAG_FULLSCREEN)
@@ -1065,7 +1066,8 @@ class MainActivity : Activity() {
             setTextColor(Color.WHITE)
             gravity = Gravity.CENTER
             includeFontPadding = false
-            background = roundedBackground(Color.argb(180, 25, 25, 25), 12)
+            typeface = Typeface.create("sans-serif", Typeface.NORMAL)
+            background = roundedBackground(Color.argb(210, 25, 25, 25), 12)
             contentDescription = "Sair da tela cheia"
             visibility = View.GONE
             layoutParams = FrameLayout.LayoutParams(dp(44), dp(44), Gravity.TOP or Gravity.END).apply {
@@ -1074,6 +1076,33 @@ class MainActivity : Activity() {
             }
         }
         playerFrame.addView(fullscreenOverlayButton)
+        val fullscreenQueueControls = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER
+            background = roundedBackground(Color.argb(210, 18, 18, 18), 16)
+            visibility = View.GONE
+            setPadding(dp(8), dp(6), dp(8), dp(6))
+            layoutParams = FrameLayout.LayoutParams(-2, dp(52), Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL).apply {
+                bottomMargin = dp(18)
+            }
+        }
+        fun fullscreenQueueButton(glyph: String, description: String, action: () -> Unit): TextView =
+            TextView(this).apply {
+                text = glyph
+                textSize = 24f
+                typeface = Typeface.create("sans-serif", Typeface.NORMAL)
+                gravity = Gravity.CENTER
+                includeFontPadding = false
+                setTextColor(Color.WHITE)
+                contentDescription = description
+                isClickable = true
+                isFocusable = true
+                layoutParams = LinearLayout.LayoutParams(dp(56), dp(40))
+                setOnClickListener { action() }
+            }
+        fullscreenQueueControls.addView(fullscreenQueueButton("⏮", "Vídeo anterior", { moveQueue(-1) }))
+        fullscreenQueueControls.addView(fullscreenQueueButton("⏭", "Próximo vídeo", { moveQueue(1) }))
+        playerFrame.addView(fullscreenQueueControls)
         root.addView(playerFrame)
         currentPlayerFrame = playerFrame
 
@@ -1138,20 +1167,44 @@ class MainActivity : Activity() {
             }
         }
         details.addView(sectionDivider)
+        val descriptionHeader = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(dp(18), dp(4), dp(18), dp(8))
+        }
         val descriptionHeading = TextView(this).apply {
             text = "DESCRIÇÃO"
             textSize = 11f
             letterSpacing = 0.12f
             setTypeface(null, Typeface.BOLD)
             setTextColor(accentColor)
-            setPadding(dp(18), dp(4), dp(18), dp(8))
+            layoutParams = LinearLayout.LayoutParams(0, -2, 1f)
         }
-        details.addView(descriptionHeading)
+        val descriptionToggle = TextView(this).apply {
+            text = "Mostrar mais  ⌄"
+            textSize = 12f
+            setTextColor(accentColor)
+            gravity = Gravity.CENTER
+            includeFontPadding = false
+            setPadding(dp(10), dp(8), dp(4), dp(8))
+            contentDescription = "Expandir ou recolher descrição"
+        }
+        descriptionHeader.addView(descriptionHeading)
+        descriptionHeader.addView(descriptionToggle)
+        details.addView(descriptionHeader)
         val descriptionText = TextView(this).apply {
             text = "Carregando descrição…"
             textSize = 13f
             setTextColor(Color.rgb(205, 205, 205))
+            maxLines = 4
+            ellipsize = android.text.TextUtils.TruncateAt.END
             setPadding(dp(18), 0, dp(18), dp(18))
+        }
+        descriptionToggle.setOnClickListener {
+            descriptionExpanded = !descriptionExpanded
+            descriptionText.maxLines = if (descriptionExpanded) Int.MAX_VALUE else 4
+            descriptionText.ellipsize = if (descriptionExpanded) null else android.text.TextUtils.TruncateAt.END
+            descriptionToggle.text = if (descriptionExpanded) "Mostrar menos  ⌃" else "Mostrar mais  ⌄"
         }
         details.addView(descriptionText)
         currentDescriptionText = descriptionText
@@ -1197,6 +1250,7 @@ class MainActivity : Activity() {
             detailsScroll.visibility = if (fullscreen) View.GONE else View.VISIBLE
             playerFrame.layoutParams = LinearLayout.LayoutParams(-1, if (fullscreen) 0 else dp(236), if (fullscreen) 1f else 0f)
             fullscreenOverlayButton.visibility = if (fullscreen) View.VISIBLE else View.GONE
+            fullscreenQueueControls.visibility = if (fullscreen) View.VISIBLE else View.GONE
             fullscreenButton.text = if (fullscreen) "⤢" else "⛶"
             window.decorView.systemUiVisibility = if (fullscreen) {
                 View.SYSTEM_UI_FLAG_FULLSCREEN or View.SYSTEM_UI_FLAG_HIDE_NAVIGATION or
@@ -1210,12 +1264,16 @@ class MainActivity : Activity() {
         exitFullscreenAction = { if (fullscreen) toggleFullscreen() }
 
         setContentView(root)
-        window.clearFlags(android.view.WindowManager.LayoutParams.FLAG_FULLSCREEN)
-        window.decorView.systemUiVisibility = View.SYSTEM_UI_FLAG_VISIBLE
+        if (!wasInPip) {
+            window.clearFlags(android.view.WindowManager.LayoutParams.FLAG_FULLSCREEN)
+            window.decorView.systemUiVisibility = View.SYSTEM_UI_FLAG_VISIBLE
+        }
         root.post {
             if (!fullscreenActive && !pipActive && playerVisible) {
                 window.clearFlags(android.view.WindowManager.LayoutParams.FLAG_FULLSCREEN)
                 window.decorView.systemUiVisibility = View.SYSTEM_UI_FLAG_VISIBLE
+            } else if (pipActive && android.os.Build.VERSION.SDK_INT >= 26) {
+                try { setPictureInPictureParams(updatePictureInPictureActions()) } catch (_: Exception) { }
             }
         }
         if (pipActive) {
@@ -1230,6 +1288,10 @@ class MainActivity : Activity() {
             mainHandler.post {
                 if (!isFinishing && !isDestroyed && playerVisible && nativePlayerView === player) {
                     descriptionText.text = description.ifBlank { "A descrição não veio do YouTube. Verifique a conexão e tente novamente." }
+                    descriptionExpanded = false
+                    descriptionText.maxLines = 4
+                    descriptionText.ellipsize = android.text.TextUtils.TruncateAt.END
+                    descriptionToggle.text = "Mostrar mais  ⌄"
                 }
             }
         }
