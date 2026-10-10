@@ -9,7 +9,7 @@ Aplicativo Android independente, com interface AMOLED inspirada no minimalismo d
 [![Android](https://img.shields.io/badge/Android-8.0%2B-3DDC84?logo=android&logoColor=white)](https://developer.android.com/)
 [![Kotlin](https://img.shields.io/badge/Kotlin-Nativo-7F52FF?logo=kotlin&logoColor=white)](https://kotlinlang.org/)
 [![Media3](https://img.shields.io/badge/Player-Media3%20%2F%20ExoPlayer-E53935)](https://developer.android.com/media/media3)
-[![Build APK](https://github.com/F1N0ZENIX/nothing-tube/actions/workflows/android.yml/badge.svg)](https://github.com/F1N0ZENIX/nothing-tube/actions)
+[![Build APK](https://github.com/F1N0ZENIX/nothing-tube/actions/workflows/main.yml/badge.svg)](https://github.com/F1N0ZENIX/nothing-tube/actions)
 
 </div>
 
