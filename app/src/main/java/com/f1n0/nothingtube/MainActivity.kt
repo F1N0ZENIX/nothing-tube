@@ -50,6 +50,11 @@ class MainActivity : Activity() {
     private val preferences by lazy { getSharedPreferences("nothing_tube", MODE_PRIVATE) }
     private val historyKey = "search_history"
     private val maxHistoryItems = 8
+    private var continuationToken: String? = null
+    private var innertubeApiKey: String? = null
+    private var innertubeContext: JSONObject? = null
+    private var isLoadingMore = false
+    private val displayedVideoIds = mutableSetOf<String>()
 
     private data class VideoResult(
         val id: String,
@@ -212,23 +217,32 @@ class MainActivity : Activity() {
                     ?: throw IllegalStateException("O YouTube não retornou os dados da pesquisa.")
                 val videos = mutableListOf<VideoResult>()
                 collectVideoRenderers(initialData, videos)
-                val unique = videos.distinctBy { it.id }.take(25)
+                val unique = videos.distinctBy { it.id }
+                val nextToken = findNextContinuationToken(initialData)
+                val apiKey = Regex("\\\"INNERTUBE_API_KEY\\\":\\\"([^\\\"]+)\\\"").find(html)?.groupValues?.getOrNull(1)
+                val context = extractJsonObjectAfter(html, "\\\"INNERTUBE_CONTEXT\\\"")
                 mainHandler.post {
                     if (activeSearch != query || isFinishing || isDestroyed) return@post
                     searchProgress?.visibility = View.GONE
                     resultsContainer?.removeAllViews()
+                    displayedVideoIds.clear()
+                    continuationToken = nextToken
+                    innertubeApiKey = apiKey
+                    innertubeContext = context
+                    isLoadingMore = false
                     if (unique.isEmpty()) {
                         setSearchMessage("Nenhum vídeo encontrado. Tente outra pesquisa.", false)
                     } else {
                         val count = TextView(this).apply {
-                            text = "${unique.size} VÍDEOS  /  RESULTADOS PARA “$query”"
+                            text = "RESULTADOS PARA “$query”"
                             textSize = 10f
                             letterSpacing = 0.08f
                             setTextColor(mutedColor)
                             setPadding(0, dp(6), 0, dp(12))
                         }
                         resultsContainer?.addView(count)
-                        unique.forEach { video -> resultsContainer?.addView(createVideoCard(video)) }
+                        unique.forEach { video -> if (displayedVideoIds.add(video.id)) resultsContainer?.addView(createVideoCard(video)) }
+                        if (continuationToken == null) addEndOfResultsMessage()
                     }
                 }
             } catch (error: Exception) {
@@ -244,18 +258,18 @@ class MainActivity : Activity() {
         }
     }
 
-    private fun extractInitialData(html: String): JSONObject? {
-        val marker = "ytInitialData"
-        val markerIndex = html.indexOf(marker)
-        if (markerIndex < 0) return null
-        val start = html.indexOf('{', markerIndex + marker.length)
-        if (start < 0) return null
+    private fun extractInitialData(html: String): JSONObject? = extractJsonObjectAfter(html, "ytInitialData")
 
+    private fun extractJsonObjectAfter(source: String, marker: String): JSONObject? {
+        val markerIndex = source.indexOf(marker)
+        if (markerIndex < 0) return null
+        val start = source.indexOf('{', markerIndex + marker.length)
+        if (start < 0) return null
         var depth = 0
         var inString = false
         var escaped = false
-        for (i in start until html.length) {
-            val c = html[i]
+        for (i in start until source.length) {
+            val c = source[i]
             if (inString) {
                 if (escaped) escaped = false
                 else if (c == '\\') escaped = true
@@ -266,12 +280,94 @@ class MainActivity : Activity() {
                     '{' -> depth++
                     '}' -> {
                         depth--
-                        if (depth == 0) return JSONObject(html.substring(start, i + 1))
+                        if (depth == 0) return try { JSONObject(source.substring(start, i + 1)) } catch (_: Exception) { null }
                     }
                 }
             }
         }
         return null
+    }
+
+    private fun findNextContinuationToken(value: Any?): String? {
+        when (value) {
+            is JSONObject -> {
+                val renderer = value.optJSONObject("continuationItemRenderer")
+                if (renderer != null) {
+                    val token = renderer.optJSONObject("continuationEndpoint")?.optJSONObject("continuationCommand")?.optString("token")
+                    if (!token.isNullOrBlank() && token != "null") return token
+                }
+                val keys = value.keys()
+                while (keys.hasNext()) {
+                    val found = findNextContinuationToken(value.opt(keys.next()))
+                    if (!found.isNullOrBlank()) return found
+                }
+            }
+            is JSONArray -> for (i in 0 until value.length()) {
+                val found = findNextContinuationToken(value.opt(i))
+                if (!found.isNullOrBlank()) return found
+            }
+        }
+        return null
+    }
+
+    private fun loadMoreVideos() {
+        val token = continuationToken ?: return
+        val apiKey = innertubeApiKey ?: return
+        val context = innertubeContext ?: return
+        if (isLoadingMore || activeSearch.isBlank()) return
+        isLoadingMore = true
+        searchProgress?.visibility = View.VISIBLE
+        networkExecutor.execute {
+            try {
+                val body = JSONObject().put("context", context).put("continuation", token).toString()
+                val connection = (URL("https://www.youtube.com/youtubei/v1/search?key=$apiKey").openConnection() as HttpURLConnection).apply {
+                    requestMethod = "POST"
+                    doOutput = true
+                    connectTimeout = 15000
+                    readTimeout = 20000
+                    setRequestProperty("Content-Type", "application/json")
+                    setRequestProperty("User-Agent", "Mozilla/5.0 (Linux; Android 15) AppleWebKit/537.36 Chrome/131.0.0.0 Mobile Safari/537.36")
+                    setRequestProperty("Origin", "https://www.youtube.com")
+                }
+                val response = try {
+                    connection.outputStream.use { it.write(body.toByteArray(Charsets.UTF_8)) }
+                    connection.inputStream.bufferedReader(Charsets.UTF_8).use { it.readText() }
+                } finally { connection.disconnect() }
+                val data = JSONObject(response)
+                val videos = mutableListOf<VideoResult>()
+                collectVideoRenderers(data, videos)
+                val nextToken = findNextContinuationToken(data)
+                mainHandler.post {
+                    if (isFinishing || isDestroyed) return@post
+                    isLoadingMore = false
+                    searchProgress?.visibility = View.GONE
+                    videos.distinctBy { it.id }.filter { displayedVideoIds.add(it.id) }.forEach {
+                        resultsContainer?.addView(createVideoCard(it))
+                    }
+                    continuationToken = nextToken
+                    if (nextToken == null) addEndOfResultsMessage()
+                }
+            } catch (_: Exception) {
+                mainHandler.post {
+                    isLoadingMore = false
+                    searchProgress?.visibility = View.GONE
+                    Toast.makeText(this, "Não foi possível carregar mais vídeos. Tente rolar novamente.", Toast.LENGTH_SHORT).show()
+                }
+            }
+        }
+    }
+
+    private fun addEndOfResultsMessage() {
+        if (resultsContainer?.findViewWithTag<View>("end-of-results") != null) return
+        resultsContainer?.addView(TextView(this).apply {
+            tag = "end-of-results"
+            text = "FIM DOS RESULTADOS DISPONÍVEIS"
+            textSize = 10f
+            letterSpacing = 0.08f
+            gravity = Gravity.CENTER
+            setTextColor(mutedColor)
+            setPadding(dp(8), dp(20), dp(8), dp(24))
+        })
     }
 
     private fun collectVideoRenderers(value: Any?, output: MutableList<VideoResult>) {
@@ -336,6 +432,7 @@ class MainActivity : Activity() {
             orientation = LinearLayout.VERTICAL
             setBackgroundColor(backgroundColor)
         }
+        applySystemInsets(root)
         val toolbar = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
@@ -405,6 +502,10 @@ class MainActivity : Activity() {
             isFillViewport = true
             overScrollMode = View.OVER_SCROLL_NEVER
             layoutParams = LinearLayout.LayoutParams(-1, 0, 1f)
+            setOnScrollChangeListener { view: View, _, scrollY, _, _ ->
+                val scroller = view as ScrollView
+                if (continuationToken != null && !isLoadingMore && scrollY + scroller.height >= scroller.getChildAt(0).height - dp(500)) loadMoreVideos()
+            }
         }
         resultsContainer = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
@@ -439,7 +540,7 @@ class MainActivity : Activity() {
             isClickable = true
             isFocusable = true
             setOnClickListener {
-                showInternalPage("https://www.youtube.com/watch?v=${video.id}", "ASSISTINDO")
+                showInternalPage("https://www.youtube.com/embed/${video.id}?autoplay=1&playsinline=1&controls=1&rel=0", "ASSISTINDO")
             }
         }
 
@@ -506,6 +607,7 @@ class MainActivity : Activity() {
             setBackgroundColor(backgroundColor)
             layoutParams = LinearLayout.LayoutParams(-1, -1)
         }
+        applySystemInsets(root)
         val toolbar = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
@@ -599,7 +701,19 @@ class MainActivity : Activity() {
         resultsContainer = null
         homeVisible = true
         setContentView(R.layout.activity_main)
+        applySystemInsets(findViewById(android.R.id.content).getChildAt(0))
         bindHome()
+    }
+
+    @Suppress("DEPRECATION")
+    private fun applySystemInsets(view: View) {
+        val initialLeft = view.paddingLeft
+        val initialRight = view.paddingRight
+        view.setOnApplyWindowInsetsListener { target, insets ->
+            target.setPadding(initialLeft, insets.systemWindowInsetTop, initialRight, insets.systemWindowInsetBottom)
+            insets
+        }
+        view.requestApplyInsets()
     }
 
     @Suppress("DEPRECATION")
