@@ -78,10 +78,16 @@ class MainActivity : Activity() {
 
     private val backgroundColor = Color.rgb(8, 8, 8)
     private val surfaceColor = Color.rgb(25, 25, 25)
-    private val accentColor = Color.rgb(229, 57, 53)
+    private val preferences by lazy { getSharedPreferences("nothing_tube", MODE_PRIVATE) }
+    private val accentColor: Int
+        get() = when (preferences.getString("theme_accent", "red")) {
+            "blue" -> Color.rgb(64, 156, 255)
+            "purple" -> Color.rgb(178, 110, 255)
+            "green" -> Color.rgb(54, 207, 145)
+            else -> Color.rgb(229, 57, 53)
+        }
     private val textColor = Color.WHITE
     private val mutedColor = Color.rgb(150, 150, 150)
-    private val preferences by lazy { getSharedPreferences("nothing_tube", MODE_PRIVATE) }
     private val historyKey = "search_history"
     private val recommendationEnabledKey = "recommendations_enabled"
     private val watchedVideosKey = "watched_videos"
@@ -215,6 +221,46 @@ class MainActivity : Activity() {
             setTextColor(mutedColor)
             setPadding(0, dp(8), 0, dp(20))
         })
+        content.addView(TextView(this).apply {
+            text = "TEMA DE DESTAQUE"
+            textSize = 10f
+            letterSpacing = 0.14f
+            setTypeface(null, Typeface.BOLD)
+            setTextColor(accentColor)
+            setPadding(0, dp(4), 0, dp(10))
+        })
+        val selectedTheme = preferences.getString("theme_accent", "red")
+        val themeRow = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        listOf(
+            Triple("red", "Nothing Red", Color.rgb(229, 57, 53)),
+            Triple("blue", "Ocean Blue", Color.rgb(64, 156, 255)),
+            Triple("purple", "Violet", Color.rgb(178, 110, 255)),
+            Triple("green", "Matrix Green", Color.rgb(54, 207, 145))
+        ).forEach { (key, label, color) ->
+            themeRow.addView(TextView(this).apply {
+                text = (if (selectedTheme == key) "●  " else "○  ") + label
+                textSize = 14f
+                setTextColor(if (selectedTheme == key) color else textColor)
+                gravity = Gravity.CENTER_VERTICAL
+                setPadding(dp(14), 0, dp(14), 0)
+                background = roundedBackground(surfaceColor, 12)
+                layoutParams = LinearLayout.LayoutParams(-1, dp(48)).apply { bottomMargin = dp(8) }
+                isClickable = true
+                isFocusable = true
+                setOnClickListener {
+                    preferences.edit().putString("theme_accent", key).apply()
+                    showSettings()
+                    Toast.makeText(this@MainActivity, "Tema aplicado: $label", Toast.LENGTH_SHORT).show()
+                }
+            })
+        }
+        content.addView(themeRow)
+        content.addView(TextView(this).apply {
+            text = "O tema altera a cor de destaque dos botões, ícones e títulos. O fundo AMOLED permanece preto."
+            textSize = 12f
+            setTextColor(mutedColor)
+            setPadding(0, 0, 0, dp(20))
+        })
         content.addView(Switch(this).apply {
             text = "Mostrar vídeos recomendados"
             textSize = 14f
@@ -258,9 +304,10 @@ class MainActivity : Activity() {
                 connectTimeout = 10000
                 readTimeout = 14000
                 instanceFollowRedirects = true
-                setRequestProperty("User-Agent", "Mozilla/5.0 (Linux; Android 15) AppleWebKit/537.36 Chrome/131.0.0.0 Mobile Safari/537.36")
+                setRequestProperty("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36")
                 setRequestProperty("Accept-Language", "pt-BR,pt;q=0.9,en;q=0.7")
-                setRequestProperty("Cookie", "CONSENT=YES+")
+                setRequestProperty("Accept", "text/html,application/xhtml+xml,application/json;q=0.9,*/*;q=0.8")
+                setRequestProperty("Cookie", "CONSENT=YES+; PREF=hl=pt-BR")
             }
             if (connection.responseCode !in 200..299) return emptyList()
             val html = connection.inputStream.bufferedReader(Charsets.UTF_8).use { it.readText() }
@@ -309,8 +356,16 @@ class MainActivity : Activity() {
                 val query = URLEncoder.encode(signal, "UTF-8")
                 candidates.addAll(fetchPublicVideos("https://www.youtube.com/results?search_query=$query"))
             }
-            if (candidates.isEmpty() && signals.isEmpty()) {
-                candidates.addAll(fetchPublicVideos("https://www.youtube.com/results?search_query=videos+populares+Brasil"))
+            // Always try search-page fallbacks: YouTube frequently changes or blocks the
+            // public trending page, which otherwise left the entire "Para você" section empty.
+            if (candidates.size < 8) {
+                val fallbackQueries = (signals.take(2) + listOf("vídeos populares Brasil", "música brasileira em alta"))
+                    .distinct()
+                fallbackQueries.forEach { query ->
+                    if (candidates.size < 30) {
+                        candidates.addAll(fetchPublicVideos("https://www.youtube.com/results?search_query=" + URLEncoder.encode(query, "UTF-8")))
+                    }
+                }
             }
             val watchedIds = preferences.getStringSet(watchedVideosKey, emptySet()).orEmpty()
                 .map { it.substringBefore("|") }.toSet()
@@ -510,29 +565,38 @@ class MainActivity : Activity() {
     private fun extractInitialData(html: String): JSONObject? = extractJsonObjectAfter(html, "ytInitialData")
 
     private fun extractJsonObjectAfter(source: String, marker: String): JSONObject? {
-        val markerIndex = source.indexOf(marker)
-        if (markerIndex < 0) return null
-        val start = source.indexOf('{', markerIndex + marker.length)
-        if (start < 0) return null
-        var depth = 0
-        var inString = false
-        var escaped = false
-        for (i in start until source.length) {
-            val c = source[i]
-            if (inString) {
-                if (escaped) escaped = false
-                else if (c == '\\') escaped = true
-                else if (c == '"') inString = false
-            } else {
-                when (c) {
-                    '"' -> inString = true
-                    '{' -> depth++
-                    '}' -> {
-                        depth--
-                        if (depth == 0) return try { JSONObject(source.substring(start, i + 1)) } catch (_: Exception) { null }
+        var markerIndex = source.indexOf(marker)
+        while (markerIndex >= 0) {
+            val start = source.indexOf('{', markerIndex + marker.length)
+            if (start >= 0) {
+                var depth = 0
+                var inString = false
+                var escaped = false
+                for (i in start until source.length) {
+                    val ch = source[i]
+                    if (inString) {
+                        if (escaped) escaped = false
+                        else if (ch == '\\') escaped = true
+                        else if (ch == '"') inString = false
+                    } else {
+                        when (ch) {
+                            '"' -> inString = true
+                            '{' -> depth++
+                            '}' -> {
+                                depth--
+                                if (depth == 0) {
+                                    try {
+                                        val parsed = JSONObject(source.substring(start, i + 1))
+                                        if (parsed.length() > 0) return parsed
+                                    } catch (_: Exception) { }
+                                    break
+                                }
+                            }
+                        }
                     }
                 }
             }
+            markerIndex = source.indexOf(marker, markerIndex + marker.length)
         }
         return null
     }
@@ -873,7 +937,10 @@ class MainActivity : Activity() {
         homeVisible = false
         playerVisible = true
         val wasInPip = pipActive
+        // Reset immersive flags before replacing the old player view.
         fullscreenActive = false
+        exitFullscreenAction = null
+        window.clearFlags(android.view.WindowManager.LayoutParams.FLAG_FULLSCREEN)
         window.decorView.systemUiVisibility = View.SYSTEM_UI_FLAG_VISIBLE
         rememberWatchedVideo(video)
         currentVideoId = video.id
@@ -961,6 +1028,7 @@ class MainActivity : Activity() {
             textSize = 23f
             setTextColor(textColor)
             gravity = Gravity.CENTER
+            includeFontPadding = false
             background = roundedBackground(surfaceColor, 14)
             contentDescription = "Alternar tela cheia"
             layoutParams = LinearLayout.LayoutParams(dp(42), dp(44)).apply { marginEnd = dp(6) }
@@ -996,6 +1064,7 @@ class MainActivity : Activity() {
             textSize = 22f
             setTextColor(Color.WHITE)
             gravity = Gravity.CENTER
+            includeFontPadding = false
             background = roundedBackground(Color.argb(180, 25, 25, 25), 12)
             contentDescription = "Sair da tela cheia"
             visibility = View.GONE
@@ -1141,6 +1210,14 @@ class MainActivity : Activity() {
         exitFullscreenAction = { if (fullscreen) toggleFullscreen() }
 
         setContentView(root)
+        window.clearFlags(android.view.WindowManager.LayoutParams.FLAG_FULLSCREEN)
+        window.decorView.systemUiVisibility = View.SYSTEM_UI_FLAG_VISIBLE
+        root.post {
+            if (!fullscreenActive && !pipActive && playerVisible) {
+                window.clearFlags(android.view.WindowManager.LayoutParams.FLAG_FULLSCREEN)
+                window.decorView.systemUiVisibility = View.SYSTEM_UI_FLAG_VISIBLE
+            }
+        }
         if (pipActive) {
             currentPlayerToolbar?.visibility = View.GONE
             currentPlayerToolbarDivider?.visibility = View.GONE
