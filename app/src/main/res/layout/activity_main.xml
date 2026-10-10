@@ -27,7 +27,7 @@
                 android:padding="8dp"
                 android:adjustViewBounds="true"
                 android:contentDescription="Logo do Nothing Tube"
-                android:src="@drawable/custom_logo"
+                android:src="@drawable/dot_logo"
                 android:scaleType="fitCenter" />
 
             <LinearLayout
