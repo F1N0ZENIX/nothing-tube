@@ -35,6 +35,7 @@ import android.widget.TextView
 import android.widget.Toast
 import androidx.media3.common.MediaItem
 import androidx.media3.common.PlaybackException
+import android.widget.Switch
 import androidx.media3.common.MimeTypes
 import androidx.media3.datasource.DefaultDataSource
 import androidx.media3.datasource.DefaultHttpDataSource
@@ -82,7 +83,13 @@ class MainActivity : Activity() {
     private val mutedColor = Color.rgb(150, 150, 150)
     private val preferences by lazy { getSharedPreferences("nothing_tube", MODE_PRIVATE) }
     private val historyKey = "search_history"
+    private val recommendationEnabledKey = "recommendations_enabled"
+    private val watchedVideosKey = "watched_videos"
     private val maxHistoryItems = 8
+    private var preferredPlaybackSpeed = 1f
+    private var recommendationContainer: LinearLayout? = null
+    private var recommendationSection: View? = null
+    private var recommendationLoadGeneration = 0
     private var continuationToken: String? = null
     private var innertubeApiKey: String? = null
     private var innertubeContext: JSONObject? = null
@@ -116,6 +123,11 @@ class MainActivity : Activity() {
 
     private fun bindHome() {
         searchInput = findViewById(R.id.searchInput)
+        findViewById<TextView>(R.id.settingsButton).setOnClickListener { showSettings() }
+        recommendationContainer = findViewById(R.id.recommendedContainer)
+        recommendationSection = findViewById(R.id.recommendationsSection)
+        updateRecommendationVisibility()
+        if (preferences.getBoolean(recommendationEnabledKey, true)) loadRecommendedVideos()
         findViewById<Button>(R.id.searchButton).setOnClickListener { searchVideos() }
         findViewById<Button>(R.id.trendingButton).setOnClickListener {
             showInternalPage("https://www.youtube.com/feed/trending", "EXPLORAR")
@@ -136,6 +148,200 @@ class MainActivity : Activity() {
             } else false
         }
         renderSearchHistory()
+    }
+
+    private fun rememberWatchedVideo(video: VideoResult) {
+        val old = preferences.getStringSet(watchedVideosKey, emptySet())?.toMutableSet() ?: mutableSetOf()
+        old.removeAll { it.substringBefore("|") == video.id }
+        old.add("${video.id}|${video.title.replace("|", " ")}|${video.channel.replace("|", " ")}")
+        preferences.edit().putStringSet(watchedVideosKey, old.toList().takeLast(40).toSet()).apply()
+    }
+
+    private fun updateRecommendationVisibility() {
+        val enabled = preferences.getBoolean(recommendationEnabledKey, true)
+        recommendationSection?.visibility = if (enabled) View.VISIBLE else View.GONE
+        if (!enabled) recommendationContainer?.removeAllViews()
+    }
+
+    private fun showSettings() {
+        homeVisible = false
+        val root = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setBackgroundColor(backgroundColor)
+        }
+        applySystemInsets(root)
+        val toolbar = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(dp(16), dp(12), dp(16), dp(12))
+        }
+        toolbar.addView(TextView(this).apply {
+            text = "‹"
+            textSize = 34f
+            gravity = Gravity.CENTER
+            setTextColor(textColor)
+            background = roundedBackground(surfaceColor, 14)
+            layoutParams = LinearLayout.LayoutParams(dp(46), dp(46))
+            contentDescription = "Voltar"
+            setOnClickListener { showHome() }
+        })
+        toolbar.addView(TextView(this).apply {
+            text = "CONFIGURAÇÕES"
+            textSize = 12f
+            letterSpacing = 0.14f
+            setTypeface(null, Typeface.BOLD)
+            setTextColor(textColor)
+            setPadding(dp(14), 0, 0, 0)
+        })
+        root.addView(toolbar)
+        root.addView(View(this).apply {
+            setBackgroundColor(Color.rgb(42, 42, 42))
+            layoutParams = LinearLayout.LayoutParams(-1, dp(1))
+        })
+        val content = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(20), dp(24), dp(20), dp(24))
+        }
+        content.addView(TextView(this).apply {
+            text = "PERSONALIZAÇÃO"
+            textSize = 10f
+            letterSpacing = 0.16f
+            setTypeface(null, Typeface.BOLD)
+            setTextColor(accentColor)
+        })
+        content.addView(TextView(this).apply {
+            text = "Ajuste a experiência do Nothing Tube. Suas preferências ficam salvas apenas neste aparelho."
+            textSize = 13f
+            setTextColor(mutedColor)
+            setPadding(0, dp(8), 0, dp(20))
+        })
+        content.addView(Switch(this).apply {
+            text = "Mostrar vídeos recomendados"
+            textSize = 14f
+            setTextColor(textColor)
+            isChecked = preferences.getBoolean(recommendationEnabledKey, true)
+            setPadding(0, dp(12), 0, dp(12))
+            setOnCheckedChangeListener { _, checked ->
+                preferences.edit().putBoolean(recommendationEnabledKey, checked).apply()
+                showHome()
+                if (!checked) Toast.makeText(this@MainActivity, "Recomendações desativadas.", Toast.LENGTH_SHORT).show()
+            }
+        })
+        content.addView(TextView(this).apply {
+            text = "O algoritmo combina tendências públicas com suas pesquisas recentes e vídeos assistidos. Desative a opção acima para ocultar a seção inicial."
+            textSize = 12f
+            setTextColor(mutedColor)
+            setPadding(0, 0, 0, dp(20))
+        })
+        content.addView(Button(this).apply {
+            text = "Limpar dados de personalização"
+            isAllCaps = false
+            textSize = 13f
+            setTextColor(textColor)
+            backgroundTintList = android.content.res.ColorStateList.valueOf(surfaceColor)
+            layoutParams = LinearLayout.LayoutParams(-1, dp(48))
+            setOnClickListener {
+                preferences.edit().remove(historyKey).remove(watchedVideosKey).apply()
+                Toast.makeText(this@MainActivity, "Dados de personalização apagados.", Toast.LENGTH_SHORT).show()
+                showHome()
+            }
+        })
+        root.addView(content)
+        setContentView(root)
+    }
+
+    private fun fetchPublicVideos(url: String): List<VideoResult> {
+        var connection: HttpURLConnection? = null
+        return try {
+            connection = (URL(url).openConnection() as HttpURLConnection).apply {
+                requestMethod = "GET"
+                connectTimeout = 10000
+                readTimeout = 14000
+                instanceFollowRedirects = true
+                setRequestProperty("User-Agent", "Mozilla/5.0 (Linux; Android 15) AppleWebKit/537.36 Chrome/131.0.0.0 Mobile Safari/537.36")
+                setRequestProperty("Accept-Language", "pt-BR,pt;q=0.9,en;q=0.7")
+                setRequestProperty("Cookie", "CONSENT=YES+")
+            }
+            if (connection.responseCode !in 200..299) return emptyList()
+            val html = connection.inputStream.bufferedReader(Charsets.UTF_8).use { it.readText() }
+            val initial = extractInitialData(html) ?: return emptyList()
+            val results = mutableListOf<VideoResult>()
+            collectVideoRenderers(initial, results)
+            results.distinctBy { it.id }
+        } catch (_: Exception) {
+            emptyList()
+        } finally {
+            connection?.disconnect()
+        }
+    }
+
+    private fun recommendationSignals(): List<String> {
+        val searches = getSearchHistory().take(5)
+        val watched = preferences.getStringSet(watchedVideosKey, emptySet()).orEmpty()
+            .toList().takeLast(8).asReversed()
+            .mapNotNull { entry ->
+                val parts = entry.split("|")
+                if (parts.size >= 2) (parts.getOrNull(1).orEmpty() + " " + parts.getOrNull(2).orEmpty()).trim() else null
+            }
+        return (searches + watched).filter { it.isNotBlank() }.distinct().take(10)
+    }
+
+    private fun loadRecommendedVideos() {
+        if (!preferences.getBoolean(recommendationEnabledKey, true)) {
+            updateRecommendationVisibility()
+            return
+        }
+        val container = recommendationContainer ?: return
+        val generation = ++recommendationLoadGeneration
+        container.removeAllViews()
+        container.addView(TextView(this).apply {
+            text = "MONTANDO SUA SELEÇÃO…"
+            textSize = 11f
+            letterSpacing = 0.06f
+            setTextColor(mutedColor)
+            setPadding(0, dp(8), 0, dp(14))
+        })
+        val signals = recommendationSignals()
+        networkExecutor.execute {
+            val candidates = mutableListOf<VideoResult>()
+            candidates.addAll(fetchPublicVideos("https://www.youtube.com/feed/trending?hl=pt-BR"))
+            signals.take(3).forEach { signal ->
+                val query = URLEncoder.encode(signal, "UTF-8")
+                candidates.addAll(fetchPublicVideos("https://www.youtube.com/results?search_query=$query"))
+            }
+            if (candidates.isEmpty() && signals.isEmpty()) {
+                candidates.addAll(fetchPublicVideos("https://www.youtube.com/results?search_query=videos+populares+Brasil"))
+            }
+            val watchedIds = preferences.getStringSet(watchedVideosKey, emptySet()).orEmpty()
+                .map { it.substringBefore("|") }.toSet()
+            val terms = signals.flatMap { it.lowercase().split(Regex("[^\\p{L}\\p{N}]+")) }
+                .filter { it.length >= 3 }.groupingBy { it }.eachCount()
+            val ranked = candidates.distinctBy { it.id }.mapIndexed { index, video ->
+                val searchable = (video.title + " " + video.channel).lowercase()
+                val relevance = terms.entries.sumOf { (term, weight) ->
+                    if (searchable.contains(term)) weight * 5 else 0
+                }
+                val watchedPenalty = if (watchedIds.contains(video.id)) 18 else 0
+                Triple(video, relevance - watchedPenalty, index)
+            }.sortedWith(compareByDescending<Triple<VideoResult, Int, Int>> { it.second }.thenBy { it.third })
+                .map { it.first }.take(18)
+            mainHandler.post {
+                if (isFinishing || isDestroyed || !homeVisible || generation != recommendationLoadGeneration) return@post
+                container.removeAllViews()
+                if (ranked.isEmpty()) {
+                    container.addView(TextView(this).apply {
+                        text = "As recomendações não carregaram. Confira a conexão ou faça uma pesquisa para personalizar sua seleção."
+                        textSize = 12f
+                        setTextColor(mutedColor)
+                        setPadding(0, dp(8), 0, dp(14))
+                    })
+                    return@post
+                }
+                videoQueue.clear()
+                videoQueue.addAll(ranked)
+                ranked.forEach { container.addView(createVideoCard(it)) }
+            }
+        }
     }
 
     private fun getSearchHistory(): MutableList<String> {
@@ -662,10 +868,14 @@ class MainActivity : Activity() {
         webView?.stopLoading()
         webView?.destroy()
         webView = null
+        preferredPlaybackSpeed = exoPlayer?.playbackParameters?.speed ?: preferredPlaybackSpeed
         releaseNativePlayer()
         homeVisible = false
         playerVisible = true
         val wasInPip = pipActive
+        fullscreenActive = false
+        window.decorView.systemUiVisibility = View.SYSTEM_UI_FLAG_VISIBLE
+        rememberWatchedVideo(video)
         currentVideoId = video.id
         currentQueueIndex = videoQueue.indexOfFirst { it.id == video.id }
         pipActive = wasInPip
@@ -979,6 +1189,7 @@ class MainActivity : Activity() {
                     val newPlayer = ExoPlayer.Builder(this)
                         .setMediaSourceFactory(mediaSourceFactory)
                         .build()
+                    newPlayer.setPlaybackSpeed(preferredPlaybackSpeed)
                     exoPlayer = newPlayer
                     player.player = newPlayer
                     val item = if (resolved.endsWith(".m3u8", ignoreCase = true)) {
@@ -990,6 +1201,11 @@ class MainActivity : Activity() {
                     newPlayer.prepare()
                     newPlayer.playWhenReady = true
                     newPlayer.addListener(object : androidx.media3.common.Player.Listener {
+                        override fun onIsPlayingChanged(isPlaying: Boolean) {
+                            if (android.os.Build.VERSION.SDK_INT >= 26 && pipActive) {
+                                try { setPictureInPictureParams(updatePictureInPictureActions()) } catch (_: Exception) { }
+                            }
+                        }
                         override fun onPlayerError(error: PlaybackException) {
                             if (!isFinishing && !isDestroyed) {
                                 status.visibility = View.VISIBLE
@@ -1526,12 +1742,16 @@ class MainActivity : Activity() {
         return RemoteAction(Icon.createWithResource(this, iconRes), title, title, pending)
     }
 
-    private fun updatePictureInPictureActions(): PictureInPictureParams = PictureInPictureParams.Builder()
-        .setAspectRatio(Rational(16, 9))
-        .setActions(listOf(
-            buildPipAction("com.f1n0.nothingtube.PIP_PREVIOUS", 101, android.R.drawable.ic_media_previous, "Vídeo anterior"),
-            buildPipAction("com.f1n0.nothingtube.PIP_NEXT", 102, android.R.drawable.ic_media_next, "Próximo vídeo")
-        )).build()
+    private fun updatePictureInPictureActions(): PictureInPictureParams {
+        val playing = exoPlayer?.isPlaying == true
+        return PictureInPictureParams.Builder()
+            .setAspectRatio(Rational(16, 9))
+            .setActions(listOf(
+                buildPipAction("com.f1n0.nothingtube.PIP_PREVIOUS", 101, android.R.drawable.ic_media_previous, "Vídeo anterior"),
+                buildPipAction("com.f1n0.nothingtube.PIP_TOGGLE", 103, if (playing) android.R.drawable.ic_media_pause else android.R.drawable.ic_media_play, if (playing) "Pausar" else "Continuar"),
+                buildPipAction("com.f1n0.nothingtube.PIP_NEXT", 102, android.R.drawable.ic_media_next, "Próximo vídeo")
+            )).build()
+    }
 
     override fun onNewIntent(intent: Intent?) {
         super.onNewIntent(intent)
@@ -1539,6 +1759,15 @@ class MainActivity : Activity() {
         setIntent(intent)
         when (intent.action) {
             "com.f1n0.nothingtube.PIP_PREVIOUS" -> moveQueue(-1)
+            "com.f1n0.nothingtube.PIP_TOGGLE" -> {
+                val player = exoPlayer
+                if (player != null) {
+                    if (player.isPlaying) player.pause() else player.play()
+                    if (android.os.Build.VERSION.SDK_INT >= 26 && pipActive) {
+                        try { setPictureInPictureParams(updatePictureInPictureActions()) } catch (_: Exception) { }
+                    }
+                }
+            }
             "com.f1n0.nothingtube.PIP_NEXT" -> moveQueue(1)
         }
     }
