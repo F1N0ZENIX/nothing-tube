@@ -719,6 +719,18 @@ class MainActivity : Activity() {
         root.addView(retryButton)
         setContentView(root)
 
+        // Do not leave users stuck on "connecting" when public stream resolvers hang.
+        // After 12 seconds, offer YouTube's own watch page as a compatibility fallback.
+        mainHandler.postDelayed({
+            if (!isFinishing && !isDestroyed && playerVisible && nativePlayerView === player &&
+                status.visibility == View.VISIBLE && status.text.toString().contains("CONECTANDO")) {
+                status.text = "O STREAM ESTÁ DEMORANDO. ABRINDO MODO COMPATÍVEL…"
+                releaseNativePlayer()
+                playerVisible = false
+                showInternalPage("https://m.youtube.com/watch?v=${video.id}", "REPRODUÇÃO COMPATÍVEL")
+            }
+        }, 12_000L)
+
         networkExecutor.execute {
             val resolved = resolvePlayableStream(video.id)
             mainHandler.post {
