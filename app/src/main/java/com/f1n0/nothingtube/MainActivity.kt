@@ -1081,6 +1081,156 @@ class MainActivity : Activity() {
         }?.content
     }
 
+    private fun authorizedYouTubeRequest(path: String, method: String, token: String, body: JSONObject? = null): JSONObject {
+        val connection = (URL("https://www.googleapis.com/youtube/v3$path").openConnection() as HttpURLConnection).apply {
+            requestMethod = method
+            connectTimeout = 12000
+            readTimeout = 15000
+            setRequestProperty("Authorization", "Bearer $token")
+            setRequestProperty("Accept", "application/json")
+            setRequestProperty("Content-Type", "application/json; charset=UTF-8")
+            if (body != null) doOutput = true
+        }
+        try {
+            if (body != null) OutputStreamWriter(connection.outputStream, Charsets.UTF_8).use { it.write(body.toString()) }
+            val status = connection.responseCode
+            val stream = if (status in 200..299) connection.inputStream else connection.errorStream
+            val response = stream?.bufferedReader(Charsets.UTF_8)?.use { it.readText() }.orEmpty()
+            if (status !in 200..299) {
+                val message = try { JSONObject(response).optJSONObject("error")?.optString("message") } catch (_: Exception) { null }
+                throw IllegalStateException(message ?: "YouTube API respondeu HTTP " + status)
+            }
+            return JSONObject(response)
+        } finally { connection.disconnect() }
+    }
+
+    private fun authorizeYouTubeComments(videoId: String) {
+        authPendingVideoId = videoId
+        val request = AuthorizationRequest.builder()
+            .setRequestedScopes(listOf(Scope("https://www.googleapis.com/auth/youtube.force-ssl")))
+            .build()
+        Identity.getAuthorizationClient(this).authorize(request)
+            .addOnSuccessListener { result ->
+                if (result.hasResolution()) {
+                    try { startIntentSenderForResult(result.pendingIntent!!.intentSender, youtubeAuthRequestCode, null, 0, 0, 0) }
+                    catch (_: Exception) { Toast.makeText(this, "Não foi possível abrir o login do Google.", Toast.LENGTH_LONG).show() }
+                } else {
+                    youtubeAccessToken = result.accessToken
+                    onYouTubeAuthorized()
+                }
+            }
+            .addOnFailureListener { error ->
+                Toast.makeText(this, "Login do YouTube falhou: " + (error.localizedMessage ?: "tente novamente"), Toast.LENGTH_LONG).show()
+            }
+    }
+
+    private fun onYouTubeAuthorized() {
+        val videoId = authPendingVideoId ?: currentVideoId
+        authPendingVideoId = null
+        Toast.makeText(this, "Conta Google conectada ao Nothing Tube.", Toast.LENGTH_SHORT).show()
+        currentCommentInput?.parent?.let { parent ->
+            if (parent is LinearLayout) for (i in 0 until parent.childCount) {
+                val child = parent.getChildAt(i)
+                if (child is Button && child.text.toString().contains("ENTRAR COM GOOGLE")) child.text = "CONECTADO AO YOUTUBE"
+            }
+        }
+        if (!videoId.isNullOrBlank()) {
+            currentDescriptionText?.text = "Atualizando descrição…"
+            networkExecutor.execute {
+                val description = fetchVideoDescription(videoId, youtubeAccessToken)
+                mainHandler.post {
+                    if (currentVideoId == videoId && playerVisible) currentDescriptionText?.text =
+                        description.ifBlank { "Descrição não disponível para este vídeo." }
+                }
+            }
+            currentCommentsContainer?.let { loadYouTubeComments(videoId, it) }
+        }
+    }
+
+    private fun loadYouTubeComments(videoId: String, container: LinearLayout) {
+        container.removeAllViews()
+        container.addView(TextView(this).apply {
+            text = "CARREGANDO COMENTÁRIOS…"
+            textSize = 12f
+            setTextColor(mutedColor)
+            setPadding(0, dp(8), 0, dp(12))
+        })
+        networkExecutor.execute {
+            val comments = fetchVideoComments(videoId, youtubeAccessToken)
+            mainHandler.post {
+                if (isFinishing || isDestroyed || !playerVisible || currentVideoId != videoId || currentCommentsContainer !== container) return@post
+                container.removeAllViews()
+                if (comments.isEmpty()) {
+                    container.addView(TextView(this).apply {
+                        text = if (youtubeAccessToken.isNullOrBlank()) "O YouTube não liberou os comentários nesta consulta. Entre com Google para tentar carregá-los pela API oficial."
+                        else "Nenhum comentário retornado. O vídeo pode estar com comentários desativados ou a API pode não ter acesso."
+                        textSize = 13f
+                        setTextColor(mutedColor)
+                        setPadding(0, 0, 0, dp(12))
+                    })
+                } else comments.take(30).forEach { comment ->
+                    val item = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(0, dp(10), 0, dp(12)) }
+                    item.addView(TextView(this).apply {
+                        text = comment.author + if (comment.published.isNotBlank()) "  ·  " + comment.published else ""
+                        textSize = 12f
+                        setTypeface(null, Typeface.BOLD)
+                        setTextColor(Color.rgb(220, 220, 220))
+                    })
+                    item.addView(TextView(this).apply {
+                        text = comment.text
+                        textSize = 13f
+                        setTextColor(Color.rgb(205, 205, 205))
+                        setPadding(0, dp(5), 0, dp(4))
+                    })
+                    if (comment.likes.isNotBlank() && comment.likes != "0") item.addView(TextView(this).apply {
+                        text = "♡  " + comment.likes
+                        textSize = 11f
+                        setTextColor(mutedColor)
+                    })
+                    container.addView(item)
+                    container.addView(View(this).apply {
+                        setBackgroundColor(Color.rgb(42, 42, 42))
+                        layoutParams = LinearLayout.LayoutParams(-1, dp(1))
+                    })
+                }
+            }
+        }
+    }
+
+    private fun postYouTubeComment(videoId: String, commentText: String, callback: (Boolean, String) -> Unit) {
+        val token = youtubeAccessToken
+        if (token.isNullOrBlank()) { callback(false, "Entre com Google antes de comentar."); return }
+        networkExecutor.execute {
+            var success = false
+            var message = "Não foi possível publicar o comentário."
+            try {
+                val body = JSONObject().put("snippet", JSONObject()
+                    .put("videoId", videoId)
+                    .put("topLevelComment", JSONObject().put("snippet", JSONObject().put("textOriginal", commentText))))
+                authorizedYouTubeRequest("/commentThreads?part=snippet", "POST", token, body)
+                success = true
+                message = "Comentário publicado!"
+            } catch (error: Exception) {
+                message = "Falha ao comentar: " + (error.localizedMessage ?: "verifique a conta e tente novamente")
+            }
+            mainHandler.post { if (!isFinishing && !isDestroyed) callback(success, message) }
+        }
+    }
+
+    @Suppress("DEPRECATION")
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        super.onActivityResult(requestCode, resultCode, data)
+        if (requestCode != youtubeAuthRequestCode || resultCode != RESULT_OK || data == null) return
+        try {
+            val result = Identity.getAuthorizationClient(this).getAuthorizationResultFromIntent(data)
+            youtubeAccessToken = result.accessToken
+            if (youtubeAccessToken.isNullOrBlank()) Toast.makeText(this, "O Google não retornou autorização para o YouTube.", Toast.LENGTH_LONG).show()
+            else onYouTubeAuthorized()
+        } catch (error: Exception) {
+            Toast.makeText(this, "Não foi possível concluir o login: " + (error.localizedMessage ?: "tente novamente"), Toast.LENGTH_LONG).show()
+        }
+    }
+
     private fun fetchVideoDescription(videoId: String): String {
         try {
             val connection = (URL("https://www.youtube.com/watch?v=$videoId&hl=pt-BR").openConnection() as HttpURLConnection).apply {
@@ -1474,6 +1624,23 @@ class MainActivity : Activity() {
             setColor(color)
             cornerRadius = dp(radiusDp).toFloat()
         }
+
+    override fun onUserLeaveHint() {
+        super.onUserLeaveHint()
+        if (android.os.Build.VERSION.SDK_INT >= 26 && playerVisible && !fullscreenActive && exoPlayer?.isPlaying == true) {
+            try { enterPictureInPictureMode(PictureInPictureParams.Builder().setAspectRatio(Rational(16, 9)).build()) } catch (_: Exception) { }
+        }
+    }
+
+    override fun onPictureInPictureModeChanged(isInPictureInPictureMode: Boolean, newConfig: Configuration) {
+        super.onPictureInPictureModeChanged(isInPictureInPictureMode, newConfig)
+        pipActive = isInPictureInPictureMode
+        currentPlayerToolbar?.visibility = if (pipActive) View.GONE else View.VISIBLE
+        currentPlayerToolbarDivider?.visibility = if (pipActive) View.GONE else View.VISIBLE
+        currentPlayerDetails?.visibility = if (pipActive) View.GONE else View.VISIBLE
+        currentPlayerFrame?.layoutParams = LinearLayout.LayoutParams(-1, if (pipActive) 0 else dp(236), if (pipActive) 1f else 0f)
+        if (!pipActive && !fullscreenActive) window.decorView.systemUiVisibility = View.SYSTEM_UI_FLAG_VISIBLE
+    }
 
     override fun onDestroy() {
         window.decorView.systemUiVisibility = View.SYSTEM_UI_FLAG_VISIBLE
