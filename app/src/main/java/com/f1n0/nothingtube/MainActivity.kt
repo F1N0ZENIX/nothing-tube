@@ -701,7 +701,7 @@ class MainActivity : Activity() {
         resultsContainer = null
         homeVisible = true
         setContentView(R.layout.activity_main)
-        applySystemInsets(findViewById(android.R.id.content).getChildAt(0))
+        findViewById<android.view.ViewGroup>(android.R.id.content).getChildAt(0)?.let { applySystemInsets(it) }
         bindHome()
     }
 
