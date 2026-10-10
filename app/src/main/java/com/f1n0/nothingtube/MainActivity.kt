@@ -1231,7 +1231,14 @@ class MainActivity : Activity() {
         }
     }
 
-    private fun fetchVideoDescription(videoId: String): String {
+    private fun fetchVideoDescription(videoId: String, token: String? = null): String {
+        if (!token.isNullOrBlank()) {
+            try {
+                val data = authorizedYouTubeRequest("/videos?part=snippet&id=$videoId", "GET", token)
+                val description = data.optJSONArray("items")?.optJSONObject(0)?.optJSONObject("snippet")?.optString("description").orEmpty()
+                if (description.isNotBlank() && description != "null") return description
+            } catch (_: Exception) { }
+        }
         try {
             val connection = (URL("https://www.youtube.com/watch?v=$videoId&hl=pt-BR").openConnection() as HttpURLConnection).apply {
                 connectTimeout = 12000
@@ -1265,7 +1272,23 @@ class MainActivity : Activity() {
         return ""
     }
 
-    private fun fetchVideoComments(videoId: String): List<VideoComment> {
+    private fun fetchVideoComments(videoId: String, token: String? = null): List<VideoComment> {
+        if (!token.isNullOrBlank()) {
+            try {
+                val data = authorizedYouTubeRequest("/commentThreads?part=snippet&videoId=$videoId&maxResults=30&textFormat=plainText", "GET", token)
+                val items = data.optJSONArray("items")
+                if (items != null) {
+                    val result = (0 until items.length()).mapNotNull { index ->
+                        val snippet = items.optJSONObject(index)?.optJSONObject("snippet")?.optJSONObject("topLevelComment")?.optJSONObject("snippet") ?: return@mapNotNull null
+                        val body = snippet.optString("textOriginal").ifBlank { snippet.optString("textDisplay") }
+                        if (body.isBlank()) return@mapNotNull null
+                        VideoComment(snippet.optString("authorDisplayName").ifBlank { "Usuário do YouTube" }, body,
+                            snippet.optInt("likeCount", 0).toString(), snippet.optString("publishedAt").take(10))
+                    }
+                    if (result.isNotEmpty()) return result
+                }
+            } catch (_: Exception) { }
+        }
         var pageConnection: HttpURLConnection? = null
         try {
             pageConnection = (URL("https://www.youtube.com/watch?v=$videoId&hl=pt-BR").openConnection() as HttpURLConnection).apply {
