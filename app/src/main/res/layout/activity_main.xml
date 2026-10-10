@@ -2,84 +2,107 @@
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:background="#080808"
-    android:fillViewport="true">
+    android:fillViewport="true"
+    android:overScrollMode="never">
+
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:orientation="vertical"
         android:paddingStart="22dp"
         android:paddingEnd="22dp"
-        android:paddingTop="28dp"
-        android:paddingBottom="24dp">
+        android:paddingTop="24dp"
+        android:paddingBottom="28dp">
 
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:gravity="center_vertical"
             android:orientation="horizontal">
+
             <ImageView
-                android:layout_width="42dp"
-                android:layout_height="42dp"
-                android:src="@drawable/dot_logo"
-                android:contentDescription="Logo de pontos vermelhos" />
+                android:layout_width="44dp"
+                android:layout_height="44dp"
+                android:contentDescription="Logo de pontos vermelhos"
+                android:src="@drawable/dot_logo" />
+
             <LinearLayout
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
                 android:layout_weight="1"
                 android:orientation="vertical"
                 android:paddingStart="12dp">
+
                 <TextView
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
+                    android:letterSpacing="0.09"
                     android:text="NOTHING TUBE"
                     android:textColor="#FFFFFF"
-                    android:textSize="20sp"
-                    android:textStyle="bold"
-                    android:letterSpacing="0.08" />
+                    android:textSize="18sp"
+                    android:textStyle="bold" />
+
                 <TextView
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:text="WATCH DIFFERENT."
-                    android:textColor="#8A8A8A"
-                    android:textSize="10sp"
-                    android:letterSpacing="0.18" />
+                    android:layout_marginTop="3dp"
+                    android:letterSpacing="0.16"
+                    android:text="YOUR VIDEO SPACE"
+                    android:textColor="#888888"
+                    android:textSize="9sp" />
             </LinearLayout>
+
             <TextView
-                android:id="@+id/statusDot"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="●"
-                android:textColor="#E53935"
-                android:textSize="18sp" />
+                android:background="#211312"
+                android:paddingStart="10dp"
+                android:paddingTop="6dp"
+                android:paddingEnd="10dp"
+                android:paddingBottom="6dp"
+                android:text="●  BETA"
+                android:textColor="#FF625D"
+                android:textSize="10sp"
+                android:textStyle="bold" />
         </LinearLayout>
 
         <TextView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="36dp"
-            android:text="SEU PRÓXIMO\nVÍDEO COMEÇA AQUI."
+            android:layout_marginTop="38dp"
+            android:letterSpacing="-0.02"
+            android:lineSpacingExtra="1dp"
+            android:text="O QUE VAMOS\nASSISTIR HOJE?"
             android:textColor="#FFFFFF"
-            android:textSize="31sp"
-            android:textStyle="bold"
-            android:lineSpacingExtra="2dp" />
+            android:textSize="32sp"
+            android:textStyle="bold" />
 
         <TextView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="10dp"
-            android:text="Uma experiência de vídeo com a estética Nothing."
-            android:textColor="#A0A0A0"
+            android:text="Encontre algo que combine com você."
+            android:textColor="#999999"
             android:textSize="14sp" />
 
         <LinearLayout
             android:layout_width="match_parent"
-            android:layout_height="54dp"
+            android:layout_height="58dp"
             android:layout_marginTop="24dp"
             android:background="#191919"
             android:gravity="center_vertical"
             android:orientation="horizontal"
-            android:paddingStart="15dp"
+            android:paddingStart="16dp"
             android:paddingEnd="6dp">
+
+            <TextView
+                android:layout_width="24dp"
+                android:layout_height="match_parent"
+                android:gravity="center"
+                android:text="⌕"
+                android:textColor="#A5A5A5"
+                android:textSize="26sp" />
+
             <EditText
                 android:id="@+id/searchInput"
                 android:layout_width="0dp"
@@ -89,19 +112,21 @@
                 android:hint="Pesquisar vídeos..."
                 android:imeOptions="actionSearch"
                 android:inputType="text"
+                android:paddingStart="8dp"
                 android:singleLine="true"
                 android:textColor="#FFFFFF"
                 android:textColorHint="#777777"
                 android:textSize="15sp" />
+
             <Button
                 android:id="@+id/searchButton"
-                android:layout_width="48dp"
-                android:layout_height="44dp"
+                android:layout_width="46dp"
+                android:layout_height="46dp"
                 android:backgroundTint="#E53935"
                 android:minWidth="0dp"
                 android:minHeight="0dp"
                 android:padding="0dp"
-                android:text="↗"
+                android:text="→"
                 android:textColor="#FFFFFF"
                 android:textSize="22sp" />
         </LinearLayout>
@@ -110,37 +135,113 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="30dp"
-            android:text="ACESSO RÁPIDO"
-            android:textColor="#E53935"
-            android:textSize="11sp"
-            android:textStyle="bold"
-            android:letterSpacing="0.18" />
+            android:letterSpacing="0.17"
+            android:text="DESCUBRA"
+            android:textColor="#FF625D"
+            android:textSize="10sp"
+            android:textStyle="bold" />
 
-        <Button
-            android:id="@+id/trendingButton"
+        <LinearLayout
             android:layout_width="match_parent"
-            android:layout_height="58dp"
+            android:layout_height="wrap_content"
             android:layout_marginTop="12dp"
-            android:backgroundTint="#202020"
-            android:gravity="center_vertical"
-            android:paddingStart="18dp"
-            android:text="▶    Explorar vídeos"
-            android:textAllCaps="false"
-            android:textColor="#FFFFFF"
-            android:textSize="15sp" />
+            android:background="#151515"
+            android:orientation="vertical"
+            android:padding="18dp">
 
-        <Button
-            android:id="@+id/musicButton"
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="01  /  EXPLORAR"
+                android:textColor="#777777"
+                android:textSize="10sp"
+                android:textStyle="bold" />
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:text="Encontre seu próximo favorito"
+                android:textColor="#FFFFFF"
+                android:textSize="18sp"
+                android:textStyle="bold" />
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="5dp"
+                android:text="Explore vídeos populares sem sair do app."
+                android:textColor="#999999"
+                android:textSize="12sp" />
+
+            <Button
+                android:id="@+id/trendingButton"
+                android:layout_width="match_parent"
+                android:layout_height="48dp"
+                android:layout_marginTop="14dp"
+                android:backgroundTint="#292020"
+                android:gravity="center"
+                android:text="Explorar vídeos   ↗"
+                android:textAllCaps="false"
+                android:textColor="#FFFFFF"
+                android:textSize="14sp" />
+        </LinearLayout>
+
+        <LinearLayout
             android:layout_width="match_parent"
-            android:layout_height="58dp"
-            android:layout_marginTop="9dp"
-            android:backgroundTint="#202020"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="10dp"
+            android:background="#151515"
             android:gravity="center_vertical"
-            android:paddingStart="18dp"
-            android:text="♫    Música no YouTube"
-            android:textAllCaps="false"
-            android:textColor="#FFFFFF"
-            android:textSize="15sp" />
+            android:orientation="horizontal"
+            android:padding="16dp">
+
+            <TextView
+                android:layout_width="48dp"
+                android:layout_height="48dp"
+                android:background="#211312"
+                android:gravity="center"
+                android:text="♫"
+                android:textColor="#FF625D"
+                android:textSize="25sp" />
+
+            <LinearLayout
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:orientation="vertical"
+                android:paddingStart="12dp"
+                android:paddingEnd="8dp">
+
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="Música"
+                    android:textColor="#FFFFFF"
+                    android:textSize="15sp"
+                    android:textStyle="bold" />
+
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="4dp"
+                    android:text="Abra sua experiência musical"
+                    android:textColor="#999999"
+                    android:textSize="11sp" />
+            </LinearLayout>
+
+            <Button
+                android:id="@+id/musicButton"
+                android:layout_width="48dp"
+                android:layout_height="44dp"
+                android:backgroundTint="#292020"
+                android:minWidth="0dp"
+                android:minHeight="0dp"
+                android:padding="0dp"
+                android:text="↗"
+                android:textColor="#FFFFFF"
+                android:textSize="18sp" />
+        </LinearLayout>
 
         <View
             android:layout_width="match_parent"
@@ -148,22 +249,29 @@
             android:layout_marginTop="28dp"
             android:background="#292929" />
 
-        <TextView
+        <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="18dp"
-            android:text="BUILD 001  /  EXPERIMENTAL"
-            android:textColor="#666666"
-            android:textSize="10sp"
-            android:letterSpacing="0.12" />
+            android:layout_marginTop="16dp"
+            android:gravity="center_vertical"
+            android:orientation="horizontal">
 
-        <TextView
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="8dp"
-            android:text="Esta primeira versão abre pesquisas no serviço oficial. Player próprio, histórico local e PiP serão adicionados nas próximas etapas."
-            android:textColor="#777777"
-            android:textSize="12sp"
-            android:lineSpacingExtra="3dp" />
+            <TextView
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:letterSpacing="0.12"
+                android:text="NOTHING TUBE  /  BUILD 002"
+                android:textColor="#666666"
+                android:textSize="9sp" />
+
+            <TextView
+                android:id="@+id/statusDot"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="●"
+                android:textColor="#E53935"
+                android:textSize="12sp" />
+        </LinearLayout>
     </LinearLayout>
 </ScrollView>
