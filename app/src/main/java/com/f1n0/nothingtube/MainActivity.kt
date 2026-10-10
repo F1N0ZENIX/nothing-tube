@@ -547,7 +547,7 @@ class MainActivity : Activity() {
         val thumbnailFrame = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             background = roundedBackground(Color.rgb(35, 35, 35), 10)
-            layoutParams = LinearLayout.LayoutParams(-1, dp(196))
+            layoutParams = LinearLayout.LayoutParams(-1, dp(184))
         }
         val image = ImageView(this).apply {
             scaleType = ImageView.ScaleType.CENTER_CROP
@@ -666,6 +666,11 @@ class MainActivity : Activity() {
             settings.javaScriptCanOpenWindowsAutomatically = false
             settings.setSupportMultipleWindows(false)
             settings.mediaPlaybackRequiresUserGesture = !url.contains("/embed/")
+            settings.allowContentAccess = true
+            settings.allowFileAccess = false
+            settings.setSupportZoom(false)
+            android.webkit.CookieManager.getInstance().setAcceptCookie(true)
+            android.webkit.CookieManager.getInstance().setAcceptThirdPartyCookies(this, true)
             webViewClient = object : WebViewClient() {
                 override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean {
                     val scheme = request.url.scheme?.lowercase()
@@ -690,7 +695,40 @@ class MainActivity : Activity() {
         webView = browser
         root.addView(browser)
         setContentView(root)
-        browser.loadUrl(url)
+        if (url.contains("youtube.com/embed/")) {
+            val videoId = Regex("/embed/([A-Za-z0-9_-]+)").find(url)?.groupValues?.getOrNull(1)
+            if (videoId != null) {
+                val playerHtml = """
+                    <!doctype html>
+                    <html>
+                    <head>
+                      <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+                      <style>
+                        html, body { margin:0; padding:0; width:100%; height:100%; background:#000; overflow:hidden; }
+                        .player { position:absolute; inset:0; display:flex; align-items:center; justify-content:center; }
+                        iframe { width:100%; aspect-ratio:16/9; border:0; background:#000; }
+                      </style>
+                    </head>
+                    <body>
+                      <div class="player">
+                        <iframe
+                          src="https://www.youtube.com/embed/$videoId?autoplay=1&amp;playsinline=1&amp;controls=1&amp;rel=0&amp;enablejsapi=1&amp;origin=https%3A%2F%2Fwww.youtube.com"
+                          title="YouTube video player"
+                          allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+                          referrerpolicy="strict-origin-when-cross-origin"
+                          allowfullscreen>
+                        </iframe>
+                      </div>
+                    </body>
+                    </html>
+                """.trimIndent()
+                browser.loadDataWithBaseURL("https://www.youtube.com/", playerHtml, "text/html", "UTF-8", null)
+            } else {
+                browser.loadUrl(url)
+            }
+        } else {
+            browser.loadUrl(url)
+        }
     }
 
     private fun showHome() {
