@@ -821,7 +821,7 @@ class MainActivity : Activity() {
         }
 
         val info = org.schabi.newpipe.extractor.stream.StreamInfo.getInfo(
-            org.schabi.newpipe.extractor.ServiceList.getService("YouTube"),
+            org.schabi.newpipe.extractor.ServiceList.YouTube,
             "https://www.youtube.com/watch?v=$videoId"
         )
         val streams = info.videoStreams ?: emptyList()
