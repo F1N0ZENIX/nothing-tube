@@ -1,6 +1,7 @@
 package com.f1n0.nothingtube
 
 import android.app.Activity
+import android.content.Intent
 import android.graphics.BitmapFactory
 import android.graphics.Color
 import android.graphics.Typeface
@@ -21,6 +22,7 @@ import android.widget.EditText
 import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.ProgressBar
+import android.widget.PopupMenu
 import android.widget.ScrollView
 import android.widget.TextView
 import android.widget.Toast
@@ -653,16 +655,54 @@ class MainActivity : Activity() {
             setPadding(dp(14), 0, 0, 0)
             layoutParams = LinearLayout.LayoutParams(0, dp(44), 1f)
         }
-        val dot = TextView(this).apply {
-            text = "●"
-            textSize = 16f
-            setTextColor(accentColor)
+        val optionsButton = TextView(this).apply {
+            text = "⋮"
+            textSize = 28f
+            setTextColor(textColor)
             gravity = Gravity.CENTER
-            layoutParams = LinearLayout.LayoutParams(dp(28), dp(44))
+            background = roundedBackground(surfaceColor, 14)
+            contentDescription = "Menu de opções do vídeo"
+            layoutParams = LinearLayout.LayoutParams(dp(42), dp(44))
+            setOnClickListener { anchor ->
+                PopupMenu(this@MainActivity, anchor).apply {
+                    menu.add(0, 1, 0, "Compartilhar vídeo")
+                    menu.add(0, 2, 1, "Copiar link")
+                    menu.add(0, 3, 2, "Abrir no YouTube")
+                    menu.add(0, 4, 3, "Recarregar reprodução")
+                    setOnMenuItemClickListener { item ->
+                        val videoUrl = "https://www.youtube.com/watch?v=${video.id}"
+                        when (item.itemId) {
+                            1 -> {
+                                startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).apply {
+                                    type = "text/plain"
+                                    putExtra(Intent.EXTRA_TEXT, videoUrl)
+                                }, "Compartilhar vídeo"))
+                                true
+                            }
+                            2 -> {
+                                val clipboard = getSystemService(CLIPBOARD_SERVICE) as android.content.ClipboardManager
+                                clipboard.setPrimaryClip(android.content.ClipData.newPlainText("Link do vídeo", videoUrl))
+                                Toast.makeText(this@MainActivity, "Link copiado.", Toast.LENGTH_SHORT).show()
+                                true
+                            }
+                            3 -> {
+                                showInternalPage(videoUrl, "YOUTUBE")
+                                true
+                            }
+                            4 -> {
+                                playVideo(video)
+                                true
+                            }
+                            else -> false
+                        }
+                    }
+                    show()
+                }
+            }
         }
         toolbar.addView(back)
         toolbar.addView(heading)
-        toolbar.addView(dot)
+        toolbar.addView(optionsButton)
         root.addView(toolbar)
         root.addView(View(this).apply {
             setBackgroundColor(Color.rgb(42, 42, 42))
@@ -679,6 +719,18 @@ class MainActivity : Activity() {
         nativePlayerView = player
         root.addView(player)
 
+        val detailsScroll = ScrollView(this).apply {
+            isFillViewport = false
+            overScrollMode = View.OVER_SCROLL_NEVER
+            layoutParams = LinearLayout.LayoutParams(-1, 0, 1f)
+        }
+        val details = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(0, 0, 0, dp(24))
+        }
+        detailsScroll.addView(details)
+        root.addView(detailsScroll)
+
         val title = TextView(this).apply {
             text = video.title
             textSize = 19f
@@ -686,14 +738,62 @@ class MainActivity : Activity() {
             setTextColor(textColor)
             setPadding(dp(18), dp(20), dp(18), dp(8))
         }
-        root.addView(title)
+        details.addView(title)
         val channel = TextView(this).apply {
             text = video.channel.ifBlank { "YouTube" }
             textSize = 13f
             setTextColor(mutedColor)
-            setPadding(dp(18), 0, dp(18), dp(16))
+            setPadding(dp(18), 0, dp(18), dp(12))
         }
-        root.addView(channel)
+        details.addView(channel)
+
+        val sectionDivider = View(this).apply {
+            setBackgroundColor(Color.rgb(42, 42, 42))
+            layoutParams = LinearLayout.LayoutParams(-1, dp(1)).apply {
+                setMargins(dp(18), dp(4), dp(18), dp(12))
+            }
+        }
+        details.addView(sectionDivider)
+        val descriptionHeading = TextView(this).apply {
+            text = "DESCRIÇÃO"
+            textSize = 11f
+            letterSpacing = 0.12f
+            setTypeface(null, Typeface.BOLD)
+            setTextColor(accentColor)
+            setPadding(dp(18), dp(4), dp(18), dp(8))
+        }
+        details.addView(descriptionHeading)
+        val descriptionText = TextView(this).apply {
+            text = "Carregando descrição…"
+            textSize = 13f
+            setTextColor(Color.rgb(205, 205, 205))
+            setPadding(dp(18), 0, dp(18), dp(18))
+        }
+        details.addView(descriptionText)
+
+        val commentsDivider = View(this).apply {
+            setBackgroundColor(Color.rgb(42, 42, 42))
+            layoutParams = LinearLayout.LayoutParams(-1, dp(1)).apply {
+                setMargins(dp(18), dp(4), dp(18), dp(12))
+            }
+        }
+        details.addView(commentsDivider)
+        val commentsHeading = TextView(this).apply {
+            text = "COMENTÁRIOS"
+            textSize = 11f
+            letterSpacing = 0.12f
+            setTypeface(null, Typeface.BOLD)
+            setTextColor(accentColor)
+            setPadding(dp(18), dp(4), dp(18), dp(8))
+        }
+        details.addView(commentsHeading)
+        val commentsPlaceholder = TextView(this).apply {
+            text = "Os comentários ainda não estão disponíveis no Nothing Tube. Você poderá acompanhar essa área em uma versão futura."
+            textSize = 13f
+            setTextColor(mutedColor)
+            setPadding(dp(18), 0, dp(18), dp(18))
+        }
+        details.addView(commentsPlaceholder)
 
         val status = TextView(this).apply {
             text = "CONECTANDO AO STREAM…"
@@ -703,7 +803,7 @@ class MainActivity : Activity() {
             gravity = Gravity.CENTER
             setPadding(dp(22), dp(24), dp(22), dp(24))
         }
-        root.addView(status)
+        details.addView(status)
 
         val retryButton = Button(this).apply {
             text = "TENTAR NOVAMENTE"
@@ -717,8 +817,17 @@ class MainActivity : Activity() {
             }
             setOnClickListener { playVideo(video) }
         }
-        root.addView(retryButton)
+        details.addView(retryButton)
         setContentView(root)
+
+        networkExecutor.execute {
+            val description = fetchVideoDescription(video.id)
+            mainHandler.post {
+                if (!isFinishing && !isDestroyed && playerVisible && nativePlayerView === player) {
+                    descriptionText.text = description.ifBlank { "A descrição não está disponível no momento." }
+                }
+            }
+        }
 
         // Keep playback fully native. If extraction is slow, expose retry instead of opening a WebView.
         mainHandler.postDelayed({
@@ -829,6 +938,27 @@ class MainActivity : Activity() {
         return usable.maxByOrNull { stream ->
             Regex("(\\d+)p").find(stream.resolution)?.groupValues?.getOrNull(1)?.toIntOrNull() ?: 0
         }?.content
+    }
+
+    private fun fetchVideoDescription(videoId: String): String {
+        var connection: HttpURLConnection? = null
+        return try {
+            connection = (URL("https://www.youtube.com/watch?v=$videoId").openConnection() as HttpURLConnection).apply {
+                requestMethod = "GET"
+                connectTimeout = 8000
+                readTimeout = 10000
+                setRequestProperty("User-Agent", "Mozilla/5.0 (Linux; Android 15) AppleWebKit/537.36 Chrome/131.0.0.0 Mobile Safari/537.36")
+                setRequestProperty("Accept-Language", "pt-BR,pt;q=0.9,en;q=0.7")
+            }
+            val html = connection.inputStream.bufferedReader(Charsets.UTF_8).use { it.readText() }
+            val playerResponse = extractJsonObjectAfter(html, "ytInitialPlayerResponse")
+            playerResponse?.optJSONObject("videoDetails")?.optString("shortDescription").orEmpty()
+                .takeIf { it.isNotBlank() && it != "null" }.orEmpty()
+        } catch (_: Exception) {
+            ""
+        } finally {
+            connection?.disconnect()
+        }
     }
 
     private fun resolvePlayableStream(videoId: String): String? {
