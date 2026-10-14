@@ -17,6 +17,8 @@ Aplicativo Android independente, com interface AMOLED inspirada no minimalismo d
 
 ## ✦ O que é?
 
+> **Ferramenta extra:** [Seed Reader — Legacy Lab](https://github.com/F1N0ZENIX/nothing-tube/tree/main/seed-reader), um caderno web para seeds e coordenadas de Minecraft PE 0.15.x. O leitor ainda não prevê spawners automaticamente; veja as limitações na documentação.
+
 O **Nothing Tube** é um projeto experimental de player de vídeo Android em Kotlin. Ele combina uma interface escura com detalhes vermelhos, pesquisa de vídeos e reprodução em um player nativo, sem depender de um player de vídeo embutido em WebView.
 
 ## Recursos
