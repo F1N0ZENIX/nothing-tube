@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#090909">
+<meta name="description" content="Seed Reader Legacy Lab — caderno de seeds e coordenadas para Minecraft PE 0.15.x.">
+<title>Seed Reader · Legacy Lab</title>
+<style>
+:root{color-scheme:dark;--bg:#080808;--panel:#111;--line:#292929;--text:#f5f5f5;--muted:#9b9b9b;--red:#ff453a;--green:#a6ffcb}
+*{box-sizing:border-box}body{margin:0;background:radial-gradient(ellipse at 80% -20%,#202020 0,transparent 45%),var(--bg);color:var(--text);font:15px/1.5 system-ui,-apple-system,Segoe UI,Roboto,sans-serif}button,input,textarea,select{font:inherit}button{cursor:pointer}a{color:var(--green)}.wrap{max-width:1050px;margin:auto;padding:22px 16px 48px}.top{display:flex;align-items:center;gap:12px;margin-bottom:28px}.mark{width:44px;height:44px;border:1px solid #555;border-radius:14px;display:grid;place-items:center;font-size:23px;font-weight:800}.eyebrow{font-size:11px;letter-spacing:.18em;color:var(--muted);text-transform:uppercase}.title{font-size:clamp(28px,6vw,46px);letter-spacing:-.055em;line-height:1.05;margin:8px 0}.subtitle{color:var(--muted);max-width:650px;margin:10px 0 24px}.pill{display:inline-flex;border:1px solid #393939;border-radius:999px;padding:4px 9px;font-size:11px;color:#ddd}.grid{display:grid;grid-template-columns:repeat(12,minmax(0,1fr));gap:14px}.panel{background:linear-gradient(145deg,#141414,#0d0d0d);border:1px solid var(--line);border-radius:18px;padding:17px;min-width:0}.span7{grid-column:span 7}.span5{grid-column:span 5}.span12{grid-column:span 12}h2{font-size:16px;margin:0 0 12px;letter-spacing:-.02em}label{display:block;color:#bdbdbd;font-size:12px;margin:12px 0 6px}input,textarea,select{width:100%;border:1px solid #383838;background:#080808;color:var(--text);border-radius:10px;padding:11px 12px;outline:none}input:focus,textarea:focus{border-color:#aaa}button{border:1px solid #484848;border-radius:10px;background:#f1f1f1;color:#080808;padding:10px 13px;font-weight:700}button.secondary{background:#181818;color:#f5f5f5}button.danger{background:#21100f;color:#ffaaa5;border-color:#51201e}.row{display:flex;gap:8px;align-items:center}.row>*{min-width:0}.row button{flex-shrink:0}.muted{color:var(--muted);font-size:12px}.metric{font-size:30px;font-weight:750;letter-spacing:-.05em}.statrow{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:14px}.stat{background:#090909;border:1px solid #242424;border-radius:12px;padding:11px}.map{display:grid;grid-template-columns:repeat(11,1fr);gap:3px;margin:12px 0;aspect-ratio:1.2/1;max-height:330px}.cell{border:1px solid #303030;background:#161b17;border-radius:3px;position:relative;min-width:0;min-height:0}.cell:nth-child(3n){background:#1d211b}.cell:nth-child(5n){background:#22201a}.cell.spawn{background:#f5f5f5;border-color:#fff}.cell.point{background:#ff453a;border-color:#ffaaa5}.cell button{position:absolute;inset:0;padding:0;border:0;background:transparent;width:100%;height:100%;border-radius:0}.legend{display:flex;gap:12px;flex-wrap:wrap;font-size:11px;color:var(--muted)}.dot{display:inline-block;width:9px;height:9px;border-radius:2px;margin-right:5px;background:#f5f5f5}.dot.red{background:var(--red)}.list{display:flex;flex-direction:column;gap:8px;margin-top:12px}.item{display:flex;justify-content:space-between;gap:12px;align-items:center;padding:11px;border:1px solid #292929;border-radius:11px;background:#0b0b0b}.item strong{display:block;overflow-wrap:anywhere}.item small{color:var(--muted)}.item button{padding:6px 9px;font-size:12px}.notice{border-left:3px solid var(--red);padding:10px 12px;background:#19100f;color:#d7c3c2;border-radius:0 10px 10px 0;font-size:12px;margin-top:12px}.footer{color:#777;font-size:11px;text-align:center;margin-top:22px}.hidden{display:none!important}@media(max-width:720px){.span7,.span5{grid-column:span 12}.wrap{padding:17px 12px 34px}.panel{padding:14px}.map{max-height:280px}.statrow{grid-template-columns:repeat(3,minmax(0,1fr))}.metric{font-size:24px}}
+</style>
+</head>
+<body><main class="wrap">
+<header class="top"><div class="mark">◉</div><div><div class="eyebrow">F1N0ZENIX · LEGACY TOOLS</div><strong>SEED READER <span style="color:var(--red)">/</span> 0.15.x</strong></div><span class="pill" style="margin-left:auto">BETA 0.1</span></header>
+<h1 class="title">Leia o mundo.<br><span style="color:#888">Mapeie a seed.</span></h1>
+<p class="subtitle">Um caderno de pesquisa para Minecraft Pocket Edition antigo. Registre seeds, coordenadas de dungeons e spawners e calcule a distância do spawn — direto no celular.</p>
+<div class="grid">
+<section class="panel span7">
+<h2>01 / Seed atual</h2>
+<label for="seed">Seed do mundo</label><div class="row"><input id="seed" inputmode="numeric" placeholder="Ex.: -1078523866" autocomplete="off"><button id="load">Abrir</button></div>
+<div class="statrow"><div class="stat"><div class="muted">Seed</div><div class="metric" id="seedShort">—</div></div><div class="stat"><div class="muted">Pontos salvos</div><div class="metric" id="count">0</div></div><div class="stat"><div class="muted">Mais próximo</div><div class="metric" id="nearest">—</div></div></div>
+<div class="notice"><strong>Transparência:</strong> esta versão ainda não calcula a geração real do Minecraft PE 0.15.3. Ela não inventa localizações: o mapa abaixo é um quadro de anotações, e os pontos precisam ser adicionados a partir de exploração ou de uma fonte confirmada.</div>
+</section>
+<section class="panel span5">
+<h2>02 / Adicionar localização</h2>
+<label for="kind">Tipo</label><select id="kind"><option value="spawner">Spawner / dungeon</option><option value="village">Vila</option><option value="cave">Caverna</option><option value="other">Outro ponto</option></select>
+<div class="row"><div style="flex:1"><label for="x">Coordenada X</label><input id="x" type="number" inputmode="numeric" placeholder="X"></div><div style="flex:1"><label for="y">Y (opcional)</label><input id="y" type="number" inputmode="numeric" placeholder="Y"></div><div style="flex:1"><label for="z">Coordenada Z</label><input id="z" type="number" inputmode="numeric" placeholder="Z"></div></div>
+<label for="note">Nota / fonte</label><input id="note" placeholder="Ex.: confirmado em mundo novo">
+<div class="row" style="margin-top:12px"><button id="add" style="flex:1">+ Salvar ponto</button><button id="export" class="secondary">Exportar</button></div>
+</section>
+<section class="panel span7">
+<h2>03 / Mapa de anotações</h2><p class="muted">Toque em uma célula para adicionar um marcador aproximado. O mapa é esquemático, não representa terreno gerado pelo jogo.</p>
+<div class="map" id="map" aria-label="Mapa esquemático clicável"></div><div class="legend"><span><i class="dot"></i>Spawn (0, 0)</span><span><i class="dot red"></i>Localização salva</span><span>1 célula ≈ 16 blocos (escala ilustrativa)</span></div>
+</section>
+<section class="panel span5">
+<h2>04 / Pontos desta seed</h2><div id="points" class="list"><p class="muted">Nenhum ponto salvo ainda.</p></div>
+<div class="row" style="margin-top:12px"><button id="saveSeed" class="secondary" style="flex:1">Guardar seed</button><button id="clear" class="danger">Limpar</button></div>
+</section>
+<section class="panel span12">
+<h2>05 / Biblioteca local</h2><p class="muted">Seeds e notas ficam guardadas apenas neste navegador. Exporte um JSON para fazer backup ou levar os dados para outro aparelho.</p><div id="library" class="list"><p class="muted">Nenhuma seed guardada.</p></div>
+</section></div>
+<p class="footer">NOTHING-STYLE UI · OPEN SOURCE · NÃO OFICIAL · Os dados ficam no seu dispositivo.</p>
+</main>
+<script>
+(()=>{'use strict';
+const $=id=>document.getElementById(id);
+let current='',points=[],library=[];
+const readNum=id=>{const v=$(id).value.trim();return v===''?null:Number(v)};
+const key='f1n0-legacy-seed-reader-v1';
+try{library=JSON.parse(localStorage.getItem(key)||'[]');if(!Array.isArray(library))library=[]}catch{library=[]}
+function persist(){try{localStorage.setItem(key,JSON.stringify(library))}catch{}}
+function distance(p){return Math.round(Math.hypot(p.x,p.z))}
+function render(){
+$('seedShort').textContent=current?current:'—';$('count').textContent=points.length;
+const nearest=points.length?Math.min(...points.map(distance))+'b':'—';$('nearest').textContent=nearest;
+const list=$('points');list.replaceChildren();
+if(!points.length){list.innerHTML='<p class="muted">Nenhum ponto salvo ainda.</p>'}else points.forEach((p,i)=>{const row=document.createElement('div');row.className='item';const left=document.createElement('div');const strong=document.createElement('strong');strong.textContent=label(p.kind)+' · X '+p.x+', Z '+p.z;const small=document.createElement('small');small.textContent=(p.y===null?'Y não anotado':'Y '+p.y)+' · '+distance(p)+' blocos do (0,0)'+(p.note?' · '+p.note:'');left.append(strong,small);const del=document.createElement('button');del.className='secondary';del.textContent='Remover';del.onclick=()=>{points.splice(i,1);render()};row.append(left,del);list.append(row)});
+renderMap();renderLibrary()
+}
+function label(k){return ({spawner:'Spawner/dungeon',village:'Vila',cave:'Caverna',other:'Outro'})[k]||k}
+function renderMap(){const map=$('map');map.replaceChildren();for(let z=-5;z<=5;z++)for(let x=-5;x<=5;x++){const c=document.createElement('div');c.className='cell';if(x===0&&z===0)c.classList.add('spawn');const found=points.find(p=>Math.round(p.x/16)===x&&Math.round(p.z/16)===z);if(found)c.classList.add('point');const b=document.createElement('button');b.title='Adicionar marcador em X '+x*16+', Z '+z*16;b.setAttribute('aria-label',b.title);b.onclick=()=>{ $('x').value=x*16;$('z').value=z*16;if(!$('note').value)$('note').value='Marcador do mapa (estimado)';$('kind').value='spawner';$('x').focus()};c.append(b);map.append(c)}}
+function renderLibrary(){const el=$('library');el.replaceChildren();if(!library.length){el.innerHTML='<p class="muted">Nenhuma seed guardada.</p>';return}library.forEach((s,i)=>{const row=document.createElement('div');row.className='item';const left=document.createElement('div');const strong=document.createElement('strong');strong.textContent=s.seed;const small=document.createElement('small');small.textContent=(s.points||[]).length+' ponto(s) · atualizado '+new Date(s.updated).toLocaleDateString('pt-BR');left.append(strong,small);const actions=document.createElement('div');actions.className='row';const open=document.createElement('button');open.textContent='Abrir';open.onclick=()=>{current=s.seed;points=JSON.parse(JSON.stringify(s.points||[]));$('seed').value=current;render()};const del=document.createElement('button');del.textContent='×';del.className='secondary';del.onclick=()=>{library.splice(i,1);persist();renderLibrary()};actions.append(open,del);row.append(left,actions);el.append(row)})}
+$('load').onclick=()=>{const v=$('seed').value.trim();if(!v){alert('Digite uma seed primeiro.');return}current=v;const saved=library.find(s=>s.seed===v);points=saved?JSON.parse(JSON.stringify(saved.points||[])):[];render()};
+$('add').onclick=()=>{if(!current){alert('Digite uma seed e toque em Abrir primeiro.');return}const x=readNum('x'),z=readNum('z'),y=readNum('y');if(x===null||z===null||!Number.isFinite(x)||!Number.isFinite(z)){alert('Informe X e Z válidos.');return}points.push({kind:$('kind').value,x,y,z,note:$('note').value.trim(),created:new Date().toISOString()});$('x').value='';$('y').value='';$('z').value='';$('note').value='';render()};
+$('saveSeed').onclick=()=>{if(!current){alert('Abra uma seed primeiro.');return}const item={seed:current,points:JSON.parse(JSON.stringify(points)),updated:new Date().toISOString()};const i=library.findIndex(s=>s.seed===current);if(i>=0)library[i]=item;else library.unshift(item);persist();renderLibrary();alert('Seed guardada neste navegador.')};
+$('clear').onclick=()=>{if(confirm('Remover todos os pontos da seed atual?')){points=[];render()}};
+$('export').onclick=()=>{const data=JSON.stringify({format:'F1N0 Legacy Seed Reader',version:1,seed:current,points},null,2);const blob=new Blob([data],{type:'application/json'});const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='seed-'+(current||'sem-seed').replace(/[^a-zA-Z0-9_-]/g,'_')+'.json';a.click();URL.revokeObjectURL(a.href)};
+$('seed').addEventListener('keydown',e=>{if(e.key==='Enter')$('load').click()});render();
+})();
+</script></body></html>
